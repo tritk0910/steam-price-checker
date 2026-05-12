@@ -19,8 +19,14 @@ const http = axios.create({
 export type Edition = {
   packageid: number;
   name: string;
+  // VN region (used for TF2/gifting math).
   priceVnd: number | null;
+  originalPriceVnd: number | null;
   discountPercent: number;
+  // US region (display-only, for the USD toggle).
+  priceUsd: number | null;
+  originalPriceUsd: number | null;
+  discountPercentUsd: number;
 };
 
 export type GamePriceResult = {
@@ -32,6 +38,9 @@ export type GamePriceResult = {
   priceVnd: number | null;
   discountPercent: number;
   initialPriceVnd: number | null;
+  priceUsd: number | null;
+  initialPriceUsd: number | null;
+  discountPercentUsd: number;
   formatted: string | null;
   releaseDate: string | null;
   editions: Edition[];
@@ -69,37 +78,41 @@ function parseVndAmount(raw: string | null | undefined): number | null {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
-export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
+type RegionData = {
+  final: number | null;
+  initial: number | null;
+  discountPercent: number;
+  formatted: string | null;
+  currency: string;
+  editions: Map<number, { priceFinal: number | null; originalPriceFinal: number | null; discountPercent: number }>;
+};
+
+async function fetchAppdetails(appid: number, cc: string): Promise<AppdetailsData | null> {
   // We intentionally omit `filters` — Steam silently drops `package_groups`
   // whenever a filter list is set, and we need it as a fallback for titles
   // (e.g. Sekiro GOTY in VN) where `price_overview` is absent.
   const { data } = await http.get(`${STEAM_STORE}/api/appdetails`, {
-    params: {
-      appids: appid,
-      cc: "vn",
-      l: "english",
-    },
+    params: { appids: appid, cc, l: "english" },
   });
-
   const entry = data?.[String(appid)];
-  if (!entry || entry.success !== true || !entry.data) {
-    throw new Error("Steam returned no data for this app id.");
-  }
+  if (!entry || entry.success !== true || !entry.data) return null;
+  return entry.data as AppdetailsData;
+}
 
-  const d = entry.data;
+function parseRegionData(d: AppdetailsData): RegionData {
   const price = d.price_overview;
-
   // Steam returns prices in minor units (price * 100), even for currencies
-  // without fractional units like VND. Divide by 100 to get VND.
+  // without fractional units like VND. Divide by 100 to get the local amount.
   let final = typeof price?.final === "number" ? price.final / 100 : null;
   let initial = typeof price?.initial === "number" ? price.initial / 100 : null;
   let discount = typeof price?.discount_percent === "number" ? price.discount_percent : 0;
   let formatted: string | null = price?.final_formatted ?? null;
+  const currency = price?.currency ?? "";
 
   const subs = (d.package_groups?.[0]?.subs ?? []) as PackageSub[];
 
-  // Some VN-region titles omit price_overview and only expose pricing via
-  // package_groups (e.g. GOTY editions). Fall back to the cheapest sub.
+  // Some titles (e.g. Sekiro GOTY in VN) omit price_overview entirely and
+  // only expose pricing via package_groups. Fall back to the cheapest sub.
   if (final == null) {
     let cheapest: PackageSub | null = null;
     for (const s of subs) {
@@ -110,38 +123,82 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
     }
     if (cheapest && typeof cheapest.price_in_cents_with_discount === "number") {
       final = cheapest.price_in_cents_with_discount / 100;
-      initial = final;
-      discount = typeof cheapest.percent_savings === "number" ? cheapest.percent_savings : 0;
+      discount = Math.max(
+        parseDiscountPercentFromText(cheapest.percent_savings_text),
+        Math.abs(typeof cheapest.percent_savings === "number" ? cheapest.percent_savings : 0),
+      );
+      initial = discount > 0 ? Math.round(final / (1 - discount / 100)) : final;
       formatted = cheapest.option_text ?? null;
     }
   }
 
-  const gameName = d.name ?? `App ${appid}`;
-  const seenPackages = new Set<number>();
-  const editions: Edition[] = subs
-    .filter((s): s is Required<Pick<PackageSub, "packageid">> & PackageSub =>
-      typeof s?.packageid === "number",
-    )
-    .filter((s) => {
-      const id = s.packageid as number;
-      if (seenPackages.has(id)) return false;
-      seenPackages.add(id);
-      return true;
-    })
-    .map((s) => ({
-      packageid: s.packageid as number,
-      name: cleanEditionName(s.option_text ?? "", gameName),
-      priceVnd:
-        typeof s.price_in_cents_with_discount === "number"
-          ? s.price_in_cents_with_discount / 100
-          : null,
-      discountPercent: typeof s.percent_savings === "number" ? s.percent_savings : 0,
-    }));
+  const editions = new Map<number, { priceFinal: number | null; originalPriceFinal: number | null; discountPercent: number }>();
+  for (const s of subs) {
+    if (typeof s?.packageid !== "number" || editions.has(s.packageid)) continue;
+    const priceFinal =
+      typeof s.price_in_cents_with_discount === "number"
+        ? s.price_in_cents_with_discount / 100
+        : null;
+    // Steam often leaves `percent_savings: 0` on discounted subs and hides
+    // the real discount inside `percent_savings_text` (e.g. "-85% ").
+    const dp = Math.max(
+      parseDiscountPercentFromText(s.percent_savings_text),
+      Math.abs(typeof s.percent_savings === "number" ? s.percent_savings : 0),
+    );
+    const originalPriceFinal =
+      priceFinal != null && dp > 0 ? Math.round(priceFinal / (1 - dp / 100)) : priceFinal;
+    editions.set(s.packageid, { priceFinal, originalPriceFinal, discountPercent: dp });
+  }
 
-  const dlcAppIds: number[] = Array.isArray(d.dlc)
+  return { final, initial, discountPercent: discount, formatted, currency, editions };
+}
+
+export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
+  // Pull VN and US prices in parallel. VN is canonical (used for math + names).
+  // US is best-effort; if it fails or returns nothing, we just leave USD fields
+  // null and fall back to the VND→USD conversion at the UI layer.
+  const [vnRes, usRes] = await Promise.allSettled([
+    fetchAppdetails(appid, "vn"),
+    fetchAppdetails(appid, "us"),
+  ]);
+
+  if (vnRes.status === "rejected") throw vnRes.reason;
+  const vnData = vnRes.value;
+  if (!vnData) throw new Error("Steam returned no data for this app id.");
+  const usData = usRes.status === "fulfilled" ? usRes.value : null;
+
+  const vn = parseRegionData(vnData);
+  const us = usData ? parseRegionData(usData) : null;
+
+  const gameName = vnData.name ?? `App ${appid}`;
+  const subs = (vnData.package_groups?.[0]?.subs ?? []) as PackageSub[];
+
+  const seen = new Set<number>();
+  const editions: Edition[] = [];
+  for (const s of subs) {
+    if (typeof s?.packageid !== "number" || seen.has(s.packageid)) continue;
+    seen.add(s.packageid);
+    const vnE = vn.editions.get(s.packageid);
+    if (!vnE) continue;
+    const usE = us?.editions.get(s.packageid);
+    editions.push({
+      packageid: s.packageid,
+      name: cleanEditionName(s.option_text ?? "", gameName),
+      priceVnd: vnE.priceFinal,
+      originalPriceVnd: vnE.originalPriceFinal,
+      discountPercent: vnE.discountPercent,
+      priceUsd: usE?.priceFinal ?? null,
+      originalPriceUsd: usE?.originalPriceFinal ?? null,
+      discountPercentUsd: usE?.discountPercent ?? 0,
+    });
+  }
+
+  const dlcAppIds: number[] = Array.isArray(vnData.dlc)
     ? Array.from(
         new Set(
-          d.dlc.filter((id: unknown): id is number => typeof id === "number" && id > 0 && id !== appid),
+          vnData.dlc.filter(
+            (id: unknown): id is number => typeof id === "number" && id > 0 && id !== appid,
+          ),
         ),
       )
     : [];
@@ -149,27 +206,52 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
   return {
     appid,
     name: gameName,
-    imageUrl: d.header_image ?? null,
-    isFree: Boolean(d.is_free),
-    currency: price?.currency ?? "VND",
-    priceVnd: final,
-    initialPriceVnd: initial,
-    discountPercent: discount,
-    formatted,
-    releaseDate: d.release_date?.date ?? null,
+    imageUrl: vnData.header_image ?? null,
+    isFree: Boolean(vnData.is_free),
+    currency: vn.currency || "VND",
+    priceVnd: vn.final,
+    initialPriceVnd: vn.initial,
+    discountPercent: vn.discountPercent,
+    priceUsd: us?.final ?? null,
+    initialPriceUsd: us?.initial ?? null,
+    discountPercentUsd: us?.discountPercent ?? 0,
+    formatted: vn.formatted,
+    releaseDate: vnData.release_date?.date ?? null,
     editions,
     dlcAppIds,
   };
 }
 
+type AppdetailsData = {
+  name?: string;
+  is_free?: boolean;
+  header_image?: string;
+  price_overview?: {
+    final?: number;
+    initial?: number;
+    discount_percent?: number;
+    final_formatted?: string;
+    currency?: string;
+  };
+  release_date?: { date?: string };
+  dlc?: unknown[];
+  package_groups?: Array<{ subs?: PackageSub[] }>;
+};
+
 function cleanEditionName(optionText: string, gameName: string): string {
   // Steam's option_text is typically "Game Name - Edition Name - 1.290.000₫".
-  // Strip the trailing price segment and the leading game-name prefix so the
-  // dropdown shows just the edition label (e.g. "Deluxe Edition").
-  let name = optionText.trim();
-  // Drop any trailing " - <price>" where the price may contain digits, dots,
-  // commas, and a currency symbol like ₫.
-  name = name.replace(/\s*-\s*[\d.,]+\s*₫\s*$/, "").trim();
+  // Discounted subs splice in raw HTML for the strikethrough original price,
+  // e.g. "DMC5 + Vergil - <span class=\"discount_original_price\">620.000₫</span> 93.000₫".
+  // Strip tags first, then strip ALL trailing price segments, then the leading
+  // game-name prefix.
+  let name = optionText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  // Repeatedly drop a trailing price (number with separators + optional ₫).
+  // Allows both "... 93.000₫" and "... - 93.000₫".
+  for (let i = 0; i < 3; i++) {
+    const next = name.replace(/(?:\s*-\s*|\s+)[\d.,]+\s*₫?\s*$/, "").trim();
+    if (next === name) break;
+    name = next;
+  }
   const prefix = `${gameName} -`;
   if (name.toLowerCase().startsWith(prefix.toLowerCase())) {
     name = name.slice(prefix.length).trim();
@@ -181,7 +263,48 @@ type PackageSub = {
   packageid?: number;
   price_in_cents_with_discount?: number;
   percent_savings?: number;
+  percent_savings_text?: string;
   option_text?: string;
+};
+
+function parseDiscountPercentFromText(text: string | undefined): number {
+  if (!text) return 0;
+  const m = text.match(/(\d+)\s*%/);
+  return m ? Number(m[1]) : 0;
+}
+
+export type SearchResult = {
+  appid: number;
+  name: string;
+  tinyImage: string | null;
+  priceVnd: number | null;
+  formatted: string | null;
+};
+
+export async function searchSteam(term: string): Promise<SearchResult[]> {
+  const trimmed = term.trim();
+  if (!trimmed) return [];
+  const { data } = await http.get(`${STEAM_STORE}/api/storesearch/`, {
+    params: { term: trimmed, l: "english", cc: "vn" },
+  });
+  const items = Array.isArray(data?.items) ? data.items : [];
+  return items.slice(0, 8).map((item: SearchHit) => {
+    const priceCents = item?.price?.final;
+    return {
+      appid: Number(item.id),
+      name: item.name ?? `App ${item.id}`,
+      tinyImage: item.tiny_image ?? null,
+      priceVnd: typeof priceCents === "number" ? priceCents / 100 : null,
+      formatted: item.price?.final ? null : null,
+    };
+  });
+}
+
+type SearchHit = {
+  id?: number | string;
+  name?: string;
+  tiny_image?: string;
+  price?: { final?: number; currency?: string };
 };
 
 export async function fetchTf2KeyPrice(): Promise<KeyPriceResult> {

@@ -8,6 +8,13 @@
     "en": "EN",
     "vi": "VI"
   },
+  "theme": {
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode"
+  },
+  "footer": {
+    "copyright": "© {year} Neo. All rights reserved."
+  },
   "currency": {
     "label": "Show prices in",
     "vnd": "VND",
@@ -16,10 +23,17 @@
   "steps": {
     "game": {
       "title": "1. Steam game",
-      "hint": "Example: https://store.steampowered.com/app/1551360/Forza_Horizon_5/",
-      "placeholder": "Steam URL or app id",
+      "hint": "Paste a Steam store URL, app id, or search by game name.",
+      "placeholder": "https://store.steampowered.com/app/1551360/Forza_Horizon_5/",
       "submit": "Fetch",
-      "invalid": "Couldn't find an app id in that input."
+      "invalid": "Couldn't find an app id in that input.",
+      "searching": "Searching Steam…",
+      "noResults": "No matches on Steam for that search.",
+      "historyHeading": "Recent",
+      "historyRemove": "Remove from history",
+      "clear": "Clear input",
+      "invalidUrl": "That URL or app id doesn't point to a Steam game.",
+      "previewHeading": "From URL"
     },
     "summary": {
       "title": "2. Game",
@@ -53,14 +67,11 @@
     },
     "params": {
       "title": "5. Parameters",
-      "description": "Tweak the marketplace fee, the actual price you pay per TF2 key, and the gifting-service rate.",
+      "description": "Tweak the marketplace fee and the gifting-service rate.",
       "feeLabel": "Marketplace fee (%)",
       "feeHint": "Default 15. Steam typically takes 13–20%.",
-      "keyBuyLabel": "TF2 key buy price (VND)",
-      "keyBuyHintDefault": "Defaults to Steam Market lowest.",
-      "keyBuyHintWithMarket": "Default: {value} (Steam Market lowest)",
       "giftRateLabel": "Gifting rate (× Steam VN)",
-      "giftRateHint": "Typically 0.7–0.8. 0.78 means the service charges 78% of Steam VN price.",
+      "giftRateHint": "Typically 0.7–0.8. 0.80 means the service charges 80% of Steam VN price.",
       "usdRateLabel": "VND per 1 USD (for USD display)",
       "usdRateHint": "Only used when the USD toggle is on."
     },
@@ -69,7 +80,9 @@
       "subtitle": "Game price on Steam VN: <b>{value}</b>",
       "cheapest": "Cheapest",
       "tie": "Both routes cost the same.",
-      "savings": "Cheapest: <b>{method}</b> — you save <b>{amount}</b>.",
+      "savingsVsDirect": "Cheapest: <b>{method}</b> — you save <b>{amount}</b> vs paying full Steam VN price.",
+      "loss": "Cheapest: <b>{method}</b>, but it still costs <b>{amount}</b> more than buying directly on Steam VN.",
+      "evenWithDirect": "Cheapest: <b>{method}</b> — same price as buying directly on Steam VN.",
       "tfMethod": "TF2 keys",
       "giftMethod": "Gifting service"
     },
@@ -86,7 +99,7 @@
         "keysNeeded": "Keys needed",
         "netPerKey": "Net wallet per key",
         "cashPaid": "Cash paid for keys",
-        "surplus": "Wallet surplus (recoverable)"
+        "walletAfter": "Steam Wallet balance remaining"
       }
     }
   },

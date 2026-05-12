@@ -8,6 +8,13 @@
     "en": "EN",
     "vi": "VI"
   },
+  "theme": {
+    "switchToDark": "Chuyển sang chế độ tối",
+    "switchToLight": "Chuyển sang chế độ sáng"
+  },
+  "footer": {
+    "copyright": "© {year} Neo. Mọi quyền được bảo lưu."
+  },
   "currency": {
     "label": "Hiển thị giá theo",
     "vnd": "VND",
@@ -16,10 +23,17 @@
   "steps": {
     "game": {
       "title": "1. Game trên Steam",
-      "hint": "Ví dụ: https://store.steampowered.com/app/1551360/Forza_Horizon_5/",
-      "placeholder": "URL Steam hoặc app id",
+      "hint": "Dán URL Steam, app id, hoặc tìm theo tên game.",
+      "placeholder": "https://store.steampowered.com/app/1551360/Forza_Horizon_5/",
       "submit": "Lấy giá",
-      "invalid": "Không tìm thấy app id trong nội dung này."
+      "invalid": "Không tìm thấy app id trong nội dung này.",
+      "searching": "Đang tìm trên Steam…",
+      "noResults": "Không có kết quả phù hợp trên Steam.",
+      "historyHeading": "Gần đây",
+      "historyRemove": "Xóa khỏi lịch sử",
+      "clear": "Xóa ô nhập",
+      "invalidUrl": "URL hoặc app id này không trỏ tới game Steam nào.",
+      "previewHeading": "Từ URL"
     },
     "summary": {
       "title": "2. Thông tin game",
@@ -53,14 +67,11 @@
     },
     "params": {
       "title": "5. Thông số",
-      "description": "Điều chỉnh phí marketplace, giá bạn thực sự trả cho mỗi chìa khóa TF2, và tỉ lệ của dịch vụ gift.",
+      "description": "Điều chỉnh phí marketplace và tỉ lệ của dịch vụ gift.",
       "feeLabel": "Phí marketplace (%)",
       "feeHint": "Mặc định 15. Steam thường thu 13–20%.",
-      "keyBuyLabel": "Giá mua chìa khóa TF2 (VND)",
-      "keyBuyHintDefault": "Mặc định theo giá rao thấp nhất trên Steam Market.",
-      "keyBuyHintWithMarket": "Mặc định: {value} (rao thấp nhất Steam Market)",
       "giftRateLabel": "Tỉ lệ dịch vụ gift (× giá Steam VN)",
-      "giftRateHint": "Thường 0.7–0.8. 0.78 nghĩa là dịch vụ thu 78% giá Steam VN.",
+      "giftRateHint": "Thường 0.7–0.8. 0.80 nghĩa là dịch vụ thu 80% giá Steam VN.",
       "usdRateLabel": "VND đổi 1 USD (cho hiển thị USD)",
       "usdRateHint": "Chỉ dùng khi bật chế độ USD."
     },
@@ -69,7 +80,9 @@
       "subtitle": "Giá game trên Steam VN: <b>{value}</b>",
       "cheapest": "Rẻ nhất",
       "tie": "Hai cách có chi phí bằng nhau.",
-      "savings": "Rẻ nhất: <b>{method}</b> — tiết kiệm <b>{amount}</b>.",
+      "savingsVsDirect": "Rẻ nhất: <b>{method}</b> — tiết kiệm <b>{amount}</b> so với mua thẳng giá Steam VN.",
+      "loss": "Rẻ nhất: <b>{method}</b>, nhưng vẫn đắt hơn <b>{amount}</b> so với mua thẳng trên Steam VN.",
+      "evenWithDirect": "Rẻ nhất: <b>{method}</b> — bằng giá mua thẳng trên Steam VN.",
       "tfMethod": "Chìa khóa TF2",
       "giftMethod": "Dịch vụ gift"
     },
@@ -86,7 +99,7 @@
         "keysNeeded": "Số chìa khóa cần",
         "netPerKey": "Nạp ví thực nhận mỗi chìa",
         "cashPaid": "Tiền mặt trả cho chìa",
-        "surplus": "Số dư ví còn dư (dùng được)"
+        "walletAfter": "Số dư ví Steam còn lại"
       }
     }
   },
