@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(yarn add *)",
+      "Bash(curl -s -o /tmp/game.json -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/api/game/1551360)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /tmp/key.json -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/api/tf2-key)",
+      "Bash(curl -s -o /tmp/key2.json -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/api/tf2-key)",
+      "Bash(curl -s http://localhost:3000/api/tf2-key)",
+      "Bash(yarn tsc *)",
+      "Bash(yarn lint *)",
+      "Bash(curl -s 'https://store.steampowered.com/api/appdetails?appids=814380&cc=vn&l=english&filters=basic,price_overview')"
+    ]
+  }
+}

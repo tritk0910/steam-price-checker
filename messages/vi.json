@@ -1,0 +1,96 @@
+{
+  "header": {
+    "title": "Máy tính giá Steam",
+    "subtitle": "Dán URL cửa hàng Steam hoặc app id. Ứng dụng so sánh chi phí mua game qua dịch vụ gift với cách bán chìa khóa TF2 trên Steam Market để nạp ví."
+  },
+  "language": {
+    "label": "Ngôn ngữ",
+    "en": "EN",
+    "vi": "VI"
+  },
+  "currency": {
+    "label": "Hiển thị giá theo",
+    "vnd": "VND",
+    "usd": "USD"
+  },
+  "steps": {
+    "game": {
+      "title": "1. Game trên Steam",
+      "hint": "Ví dụ: https://store.steampowered.com/app/1551360/Forza_Horizon_5/",
+      "placeholder": "URL Steam hoặc app id",
+      "submit": "Lấy giá",
+      "invalid": "Không tìm thấy app id trong nội dung này."
+    },
+    "summary": {
+      "title": "2. Thông tin game",
+      "description": "Giá Steam khu vực Việt Nam.",
+      "empty": "Dán URL Steam ở trên để bắt đầu.",
+      "loading": "Đang lấy dữ liệu từ Steam…",
+      "freeToPlay": "<b>{name}</b> miễn phí trên Steam.",
+      "noRegionPrice": "<b>{name}</b> — không có giá tại VN (có thể bị khóa khu vực hoặc chưa phát hành).",
+      "openInSteam": "Steam",
+      "released": "Phát hành {date}"
+    },
+    "key": {
+      "title": "3. Chìa khóa TF2 (Steam Market)",
+      "description": "Giá thị trường của \"Mann Co. Supply Crate Key\".",
+      "refresh": "Cập nhật giá chìa khóa",
+      "loading": "Đang lấy giá chìa khóa…",
+      "lowest": "giá rao thấp nhất",
+      "median": "Trung vị {value}",
+      "volume": "Khối lượng {value}"
+    },
+    "versions": {
+      "title": "4. Phiên bản",
+      "description": "Chọn phiên bản khác, bản deluxe, hoặc DLC để cập nhật giá và link Steam.",
+      "placeholder": "Chọn phiên bản",
+      "base": "Bản gốc",
+      "dlcPrefix": "DLC",
+      "dlcFallback": "App {id}",
+      "loading": "Đang tải…",
+      "noAlternatives": "Game này không có phiên bản hoặc DLC bổ sung.",
+      "idle": "Tra một game ở trên để xem các phiên bản và DLC."
+    },
+    "params": {
+      "title": "5. Thông số",
+      "description": "Điều chỉnh phí marketplace, giá bạn thực sự trả cho mỗi chìa khóa TF2, và tỉ lệ của dịch vụ gift.",
+      "feeLabel": "Phí marketplace (%)",
+      "feeHint": "Mặc định 15. Steam thường thu 13–20%.",
+      "keyBuyLabel": "Giá mua chìa khóa TF2 (VND)",
+      "keyBuyHintDefault": "Mặc định theo giá rao thấp nhất trên Steam Market.",
+      "keyBuyHintWithMarket": "Mặc định: {value} (rao thấp nhất Steam Market)",
+      "giftRateLabel": "Tỉ lệ dịch vụ gift (× giá Steam VN)",
+      "giftRateHint": "Thường 0.7–0.8. 0.78 nghĩa là dịch vụ thu 78% giá Steam VN.",
+      "usdRateLabel": "VND đổi 1 USD (cho hiển thị USD)",
+      "usdRateHint": "Chỉ dùng khi bật chế độ USD."
+    },
+    "comparison": {
+      "title": "6. So sánh",
+      "subtitle": "Giá game trên Steam VN: <b>{value}</b>",
+      "cheapest": "Rẻ nhất",
+      "tie": "Hai cách có chi phí bằng nhau.",
+      "savings": "Rẻ nhất: <b>{method}</b> — tiết kiệm <b>{amount}</b>.",
+      "tfMethod": "Chìa khóa TF2",
+      "giftMethod": "Dịch vụ gift"
+    },
+    "routes": {
+      "gift": {
+        "title": "Qua dịch vụ gift",
+        "rate": "Tỉ lệ",
+        "steamPrice": "Giá Steam VN",
+        "charges": "Dịch vụ thu",
+        "empty": "Nhập tỉ lệ ở trên"
+      },
+      "tf": {
+        "title": "Qua chìa khóa TF2",
+        "keysNeeded": "Số chìa khóa cần",
+        "netPerKey": "Nạp ví thực nhận mỗi chìa",
+        "cashPaid": "Tiền mặt trả cho chìa",
+        "surplus": "Số dư ví còn dư (dùng được)"
+      }
+    }
+  },
+  "errors": {
+    "loadFailed": "Không thể tải dữ liệu."
+  }
+}
