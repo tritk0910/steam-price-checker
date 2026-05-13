@@ -4,24 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import axios from "axios";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { ArrowRight, ExternalLink, Loader2, RefreshCw, Search, X } from "lucide-react";
 
 import { LocaleToggle } from "@/components/locale-toggle";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { VersionsCard, type SelectedItem } from "@/components/versions-card";
-import { calculate, formatUsd, formatUsdNative, formatVnd } from "@/lib/calc";
+import { calculate, formatReleaseDate, formatUsd, formatUsdNative, formatVnd } from "@/lib/calc";
 import { useSearchHistory, type HistoryEntry } from "@/lib/history";
 import {
   extractAppId,
@@ -30,6 +24,7 @@ import {
   type SearchResult,
 } from "@/lib/steam";
 import { cn } from "@/lib/utils";
+import { Backlight } from "./ui/backlight";
 
 // Steam's effective fee on TF2 keys ≈ 13% in VN region (list 65k → wallet ~56.5k).
 const DEFAULT_FEE = 13;
@@ -54,8 +49,7 @@ async function fetchGame(appid: number): Promise<GamePriceResult> {
     return data;
   } catch (err) {
     if (axios.isAxiosError(err) && err.response) {
-      const message =
-        (err.response.data as { error?: string } | undefined)?.error ?? err.message;
+      const message = (err.response.data as { error?: string } | undefined)?.error ?? err.message;
       throw new GameFetchError(message, err.response.status);
     }
     throw err;
@@ -150,8 +144,7 @@ export function Calculator() {
 
   // The popover shows: search results, URL preview, or recent history.
   const showPopover =
-    searchOpen &&
-    (parsedAppIdFromInput != null || hasSearchTerm || history.length > 0);
+    searchOpen && (parsedAppIdFromInput != null || hasSearchTerm || history.length > 0);
 
   const rootGameQuery = useQuery({
     queryKey: ["game", rootAppId],
@@ -205,12 +198,15 @@ export function Calculator() {
       if (key.startsWith("pkg-")) {
         const id = Number(key.slice(4));
         const edition = rootGameQuery.data?.editions.find((e) => e.packageid === id);
-        if (!edition) return null;
+        if (!edition || !rootGameQuery.data) return null;
         return {
           key,
           kind: "package",
+          // Packages share the root app's store page + release date.
+          appid: rootGameQuery.data.appid,
           name: edition.name,
-          imageUrl: rootGameQuery.data?.imageUrl ?? null,
+          imageUrl: rootGameQuery.data.imageUrl ?? null,
+          releaseDate: rootGameQuery.data.releaseDate,
           priceVnd: edition.priceVnd,
           originalPriceVnd: edition.originalPriceVnd,
           discountPercent: edition.discountPercent,
@@ -227,8 +223,10 @@ export function Calculator() {
         return {
           key,
           kind: "dlc",
+          appid: data.appid,
           name: data.name,
           imageUrl: data.imageUrl,
+          releaseDate: data.releaseDate,
           priceVnd: data.priceVnd,
           originalPriceVnd: data.initialPriceVnd,
           discountPercent: data.discountPercent,
@@ -246,19 +244,31 @@ export function Calculator() {
     ? selectedItems.reduce((sum, i) => sum + (i.priceUsd ?? 0), 0)
     : null;
 
-  // The Game card always shows the root game's banner/name; price reflects the
-  // sum across the current selection.
-  // Single-selection: use that item's own banner (DLC has its own header).
-  // Multi-selection (or empty): fall back to the root game's banner.
+  // Single-selection: use that item's own banner + name (so the Game card
+  // matches what's shown in the Versions dropdown trigger).
+  // Multi-selection (or empty): fall back to the root game's banner + name.
+  const rootName = rootGameQuery.data?.name ?? "";
   const displayedImageUrl =
     selectedItems.length === 1
       ? (selectedItems[0].imageUrl ?? rootGameQuery.data?.imageUrl ?? null)
       : (rootGameQuery.data?.imageUrl ?? null);
+  const displayedName =
+    selectedItems.length === 1
+      ? labelForSelectedItem(selectedItems[0], rootName)
+      : rootName;
+
+  // For single-selection: route appid + release date through that item so the
+  // Steam link points to its page (DLC → DLC page) and the displayed release
+  // date matches Steam's actual page. Editions (packages) keep root values.
+  const singleSelected = selectedItems.length === 1 ? selectedItems[0] : null;
 
   const displayedGame: GamePriceResult | null = rootGameQuery.data
     ? {
         ...rootGameQuery.data,
+        appid: singleSelected?.appid ?? rootGameQuery.data.appid,
+        name: displayedName,
         imageUrl: displayedImageUrl,
+        releaseDate: singleSelected?.releaseDate ?? rootGameQuery.data.releaseDate,
         priceVnd: totalVnd,
         initialPriceVnd: null,
         discountPercent: 0,
@@ -269,8 +279,8 @@ export function Calculator() {
       }
     : null;
 
-  const displayedSteamUrl = rootGameQuery.data
-    ? `https://store.steampowered.com/app/${rootGameQuery.data.appid}/`
+  const displayedSteamUrl = displayedGame
+    ? `https://store.steampowered.com/app/${displayedGame.appid}/`
     : null;
 
   const displayedQuery = rootGameQuery;
@@ -332,24 +342,25 @@ export function Calculator() {
     return formatVnd(vnd ?? null);
   };
 
-
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-10 sm:py-16">
       <header className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <Image src="/logo.png" alt="" width={150} height={150} className="text-foreground" />
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t("header.title")}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              {t("header.title")}
+            </h1>
           </div>
           <div className="flex items-center gap-2">
             <AnimatedThemeToggler
               variant="circle"
-              className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground [&_svg]:size-4"
+              className="text-muted-foreground hover:bg-accent hover:text-accent-foreground inline-flex size-9 items-center justify-center rounded-md transition-colors [&_svg]:size-4"
             />
             <LocaleToggle />
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">{t("header.subtitle")}</p>
+        <p className="text-muted-foreground text-sm">{t("header.subtitle")}</p>
       </header>
 
       <Card>
@@ -383,7 +394,7 @@ export function Calculator() {
                     setSearchOpen(true);
                   }}
                   aria-label={t("steps.game.clear")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 transition-colors"
                 >
                   <X className="size-4" />
                 </button>
@@ -416,7 +427,7 @@ export function Calculator() {
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle className="text-base">{t("steps.summary.title")}</CardTitle>
             <CardDescription>{t("steps.summary.description")}</CardDescription>
@@ -432,7 +443,7 @@ export function Calculator() {
           </CardContent>
         </Card>
 
-        <div className="flex flex-col gap-6 lg:h-full">
+        <div className="flex min-w-0 flex-col gap-6 lg:h-full">
           <Card className="lg:flex-1">
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
@@ -583,7 +594,7 @@ export function Calculator() {
               />
             </div>
             {result.gift && result.savingsVsDirectVnd != null ? (
-              <div className="mt-6 rounded-md border bg-muted/40 p-4 text-sm">
+              <div className="bg-muted/40 mt-6 rounded-md border p-4 text-sm">
                 {(() => {
                   const methodLabel =
                     result.cheapest === "tf"
@@ -611,7 +622,7 @@ export function Calculator() {
         </Card>
       ) : null}
 
-      <footer className="mt-4 border-t pt-6 text-center text-xs text-muted-foreground">
+      <footer className="text-muted-foreground mt-4 border-t pt-6 text-center text-xs">
         {t("footer.copyright", { year: new Date().getFullYear() })}
       </footer>
     </div>
@@ -632,13 +643,14 @@ function GameSummary({
   format: (vnd: number | null | undefined, usd: number | null | undefined) => string;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
 
   if (query.isPending && !query.data && !query.error) {
-    return <p className="text-sm text-muted-foreground">{t("steps.summary.empty")}</p>;
+    return <p className="text-muted-foreground text-sm">{t("steps.summary.empty")}</p>;
   }
   if (query.isFetching && !displayed) {
     return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+      <p className="text-muted-foreground flex items-center gap-2 text-sm">
         <Loader2 className="size-4 animate-spin" /> {t("steps.summary.loading")}
       </p>
     );
@@ -650,22 +662,24 @@ function GameSummary({
         : query.error instanceof Error
           ? query.error.message
           : t("errors.loadFailed");
-    return <p className="text-sm text-destructive">{friendly}</p>;
+    return <p className="text-destructive text-sm">{friendly}</p>;
   }
   const g = displayed;
   if (!g) return null;
 
   const banner = g.imageUrl ? (
-    <div className="relative aspect-460/215 w-full overflow-hidden rounded-md border bg-muted">
-      <Image
-        src={g.imageUrl}
-        alt={g.name}
-        fill
-        sizes="(max-width: 768px) 100vw, 600px"
-        className="object-cover"
-        priority
-      />
-    </div>
+    <Backlight blur={10} className="w-full">
+      <div className="bg-muted relative aspect-460/215 w-full overflow-hidden rounded-md">
+        <Image
+          src={g.imageUrl}
+          alt={g.name}
+          fill
+          sizes="(max-width: 768px) 100vw, 600px"
+          className="object-cover"
+          priority
+        />
+      </div>
+    </Backlight>
   ) : null;
 
   const titleRow = (
@@ -676,7 +690,7 @@ function GameSummary({
           href={steamUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:underline"
+          className="text-muted-foreground inline-flex shrink-0 items-center gap-1 text-xs hover:underline"
         >
           {t("steps.summary.openInSteam")} <ExternalLink className="size-3" />
         </a>
@@ -684,12 +698,17 @@ function GameSummary({
     </div>
   );
 
-  if (g.isFree) {
+  // Order matters: a positive price wins over everything — covers the case
+  // where a free root game (e.g. CS2) has a paid DLC selected (Prime Status
+  // Upgrade), so we show the DLC's price rather than the free-to-play hint.
+  if (g.priceVnd != null && g.priceVnd > 0) {
+    // fall through to the priced branch below
+  } else if (g.isFree && hasSelection) {
     return (
-      <div className="flex flex-col gap-3 text-sm">
+      <div className="flex min-w-0 flex-col gap-3 text-sm">
         {banner}
         {titleRow}
-        <p>
+        <p className="break-words">
           {t.rich("steps.summary.freeToPlay", {
             name: g.name,
             b: (chunks) => <strong>{chunks}</strong>,
@@ -697,19 +716,26 @@ function GameSummary({
         </p>
       </div>
     );
-  }
-  if (g.priceVnd == null) {
+  } else if (g.priceVnd == null) {
+    // Three distinct null-price cases, ordered most-to-least specific:
+    //   1. hasSelection — a selected item came back with no VN price (region-locked).
+    //   2. no editions AND no DLC AND not free — nothing to select and no price
+    //      (e.g. delisted titles like "Muse Dash - Just as planned").
+    //   3. There are alternatives — user just hasn't picked one yet.
+    const nothingToSelect = g.editions.length === 0 && g.dlcAppIds.length === 0;
     return (
-      <div className="flex flex-col gap-3 text-sm">
+      <div className="flex min-w-0 flex-col gap-3 text-sm">
         {banner}
         {titleRow}
-        <p className="text-muted-foreground">
+        <p className="break-words text-muted-foreground">
           {hasSelection
             ? t.rich("steps.summary.noRegionPrice", {
                 name: g.name,
                 b: (chunks) => <strong>{chunks}</strong>,
               })
-            : t("steps.summary.selectVersion")}
+            : nothingToSelect
+              ? t("steps.summary.unavailable")
+              : t("steps.summary.selectVersion")}
         </p>
       </div>
     );
@@ -720,7 +746,8 @@ function GameSummary({
   // edition. We prefer the USD discount info when the USD price exists.
   const useUsdSide = g.priceUsd != null;
   const dPct = useUsdSide ? g.discountPercentUsd : g.discountPercent;
-  const hasDiscount = dPct > 0 && (useUsdSide ? g.initialPriceUsd != null : g.initialPriceVnd != null);
+  const hasDiscount =
+    dPct > 0 && (useUsdSide ? g.initialPriceUsd != null : g.initialPriceVnd != null);
   return (
     <div className="flex flex-col gap-3 text-sm">
       {banner}
@@ -729,7 +756,7 @@ function GameSummary({
         <span className="text-2xl font-semibold">{format(g.priceVnd, g.priceUsd)}</span>
         {hasDiscount ? (
           <>
-            <span className="text-sm text-muted-foreground line-through">
+            <span className="text-muted-foreground text-sm line-through">
               {format(g.initialPriceVnd, g.initialPriceUsd)}
             </span>
             <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs font-medium text-emerald-600">
@@ -739,8 +766,10 @@ function GameSummary({
         ) : null}
       </div>
       {g.releaseDate ? (
-        <p className="text-xs text-muted-foreground">
-          {t("steps.summary.released", { date: g.releaseDate })}
+        <p className="text-muted-foreground text-xs">
+          {t("steps.summary.released", {
+            date: formatReleaseDate(g.releaseDate, locale) ?? g.releaseDate,
+          })}
         </p>
       ) : null}
     </div>
@@ -758,14 +787,14 @@ function KeySummary({
 
   if (query.isFetching && !query.data) {
     return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+      <p className="text-muted-foreground flex items-center gap-2 text-sm">
         <Loader2 className="size-4 animate-spin" /> {t("steps.key.loading")}
       </p>
     );
   }
   if (query.error) {
     return (
-      <p className="text-sm text-destructive">
+      <p className="text-destructive text-sm">
         {query.error instanceof Error ? query.error.message : t("errors.loadFailed")}
       </p>
     );
@@ -777,18 +806,18 @@ function KeySummary({
       <div className="flex items-baseline justify-between gap-2">
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-semibold">{format(k.lowestPriceVnd)}</span>
-          <span className="text-xs text-muted-foreground">{t("steps.key.lowest")}</span>
+          <span className="text-muted-foreground text-xs">{t("steps.key.lowest")}</span>
         </div>
         <a
           href="https://steamcommunity.com/market/listings/440/Mann%20Co.%20Supply%20Crate%20Key"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:underline"
+          className="text-muted-foreground inline-flex shrink-0 items-center gap-1 text-xs hover:underline"
         >
           {t("steps.summary.openInSteam")} <ExternalLink className="size-3" />
         </a>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         {t("steps.key.median", { value: format(k.medianPriceVnd) })} ·{" "}
         {t("steps.key.volume", { value: k.volume ?? "—" })}
       </p>
@@ -811,7 +840,7 @@ function Field({
     <div className={cn("flex flex-col gap-1.5", className)}>
       <Label>{label}</Label>
       {children}
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
     </div>
   );
 }
@@ -841,7 +870,7 @@ function RouteCard({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+        <h3 className="text-muted-foreground text-sm font-medium">{title}</h3>
         {highlight ? (
           <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
             {cheapestLabel}
@@ -849,11 +878,11 @@ function RouteCard({
         ) : null}
       </div>
       <div className="text-2xl font-semibold">{cost != null ? format(cost) : "—"}</div>
-      <dl className="grid gap-1 text-xs text-muted-foreground">
+      <dl className="text-muted-foreground grid gap-1 text-xs">
         {details.map(({ label, value, bold }) => (
           <div key={label} className="flex items-center justify-between">
-            <dt className={cn(bold && "font-bold text-foreground")}>{label}</dt>
-            <dd className={cn("font-medium text-foreground", bold && "font-bold")}>{value}</dd>
+            <dt className={cn(bold && "text-foreground font-bold")}>{label}</dt>
+            <dd className={cn("text-foreground font-medium", bold && "font-bold")}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -868,6 +897,16 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Pick the label shown in the Game card for a single selection so it matches
+// the Versions dropdown trigger. Packages reuse the editionLabel-style rule
+// (prefer the root name when it extends the edition name, e.g.
+// "Subnautica 2" over "Subnautica"); DLCs use their own app name.
+function labelForSelectedItem(item: SelectedItem, rootName: string): string {
+  if (item.kind === "dlc") return item.name || rootName;
+  if (!item.name) return rootName;
+  if (rootName.toLowerCase().startsWith(item.name.toLowerCase())) return rootName;
+  return item.name;
+}
 
 function SearchResultsPopover({
   query,
@@ -894,8 +933,8 @@ function SearchResultsPopover({
   if (previewAppId != null) {
     if (previewQuery.isFetching && !previewQuery.data) {
       return (
-        <div className="absolute left-0 right-0 top-full z-30 mt-2 rounded-md border bg-popover p-3 text-sm shadow-md">
-          <div className="flex items-center gap-2 text-muted-foreground">
+        <div className="bg-popover absolute top-full right-0 left-0 z-30 mt-2 rounded-md border p-3 text-sm shadow-md">
+          <div className="text-muted-foreground flex items-center gap-2">
             <Loader2 className="size-4 animate-spin" /> {t("searching")}
           </div>
         </div>
@@ -905,21 +944,17 @@ function SearchResultsPopover({
       const err = previewQuery.error;
       const isInvalid = err instanceof GameFetchError && err.status === 502;
       return (
-        <div className="absolute left-0 right-0 top-full z-30 mt-2 rounded-md border bg-popover p-3 text-sm shadow-md">
+        <div className="bg-popover absolute top-full right-0 left-0 z-30 mt-2 rounded-md border p-3 text-sm shadow-md">
           <p className="text-destructive">
-            {isInvalid
-              ? t("invalidUrl")
-              : err instanceof Error
-                ? err.message
-                : t("invalidUrl")}
+            {isInvalid ? t("invalidUrl") : err instanceof Error ? err.message : t("invalidUrl")}
           </p>
         </div>
       );
     }
     const g = previewQuery.data;
     return (
-      <ul className="absolute left-0 right-0 top-full z-30 mt-2 max-h-96 overflow-auto rounded-md border bg-popover py-1 text-sm shadow-md">
-        <li className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <ul className="bg-popover absolute top-full right-0 left-0 z-30 mt-2 max-h-96 overflow-auto rounded-md border py-1 text-sm shadow-md">
+        <li className="text-muted-foreground px-2 pt-1.5 pb-1 text-[11px] font-medium tracking-wide uppercase">
           {t("previewHeading")}
         </li>
         <li>
@@ -927,7 +962,7 @@ function SearchResultsPopover({
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onPick(g.appid)}
-            className="flex w-full items-center gap-3 px-2 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-3 px-2 py-1.5 text-left transition-colors"
           >
             {g.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -939,10 +974,10 @@ function SearchResultsPopover({
                 className="h-6 w-16 shrink-0 rounded object-cover"
               />
             ) : (
-              <div className="h-6 w-16 shrink-0 rounded bg-muted" />
+              <div className="bg-muted h-6 w-16 shrink-0 rounded" />
             )}
             <span className="flex-1 truncate">{g.name}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">
+            <span className="text-muted-foreground shrink-0 text-xs">
               {g.priceVnd != null ? format(g.priceVnd, g.priceUsd) : ""}
             </span>
           </button>
@@ -955,8 +990,8 @@ function SearchResultsPopover({
   if (!hasSearchTerm) {
     if (history.length === 0) return null;
     return (
-      <ul className="absolute left-0 right-0 top-full z-30 mt-2 max-h-96 overflow-auto rounded-md border bg-popover py-1 text-sm shadow-md">
-        <li className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <ul className="bg-popover absolute top-full right-0 left-0 z-30 mt-2 max-h-96 overflow-auto rounded-md border py-1 text-sm shadow-md">
+        <li className="text-muted-foreground px-2 pt-1.5 pb-1 text-[11px] font-medium tracking-wide uppercase">
           {t("historyHeading")}
         </li>
         {history.map((h) => (
@@ -965,7 +1000,7 @@ function SearchResultsPopover({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => onPick(h.appid)}
-              className="flex w-full items-center gap-3 px-2 py-1.5 pr-9 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+              className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-3 px-2 py-1.5 pr-9 text-left transition-colors"
             >
               {h.image ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -977,7 +1012,7 @@ function SearchResultsPopover({
                   className="h-6 w-16 shrink-0 rounded object-cover"
                 />
               ) : (
-                <div className="h-6 w-16 shrink-0 rounded bg-muted" />
+                <div className="bg-muted h-6 w-16 shrink-0 rounded" />
               )}
               <span className="flex-1 truncate">{h.name}</span>
             </button>
@@ -989,7 +1024,7 @@ function SearchResultsPopover({
                 e.stopPropagation();
                 onRemoveHistory(h.appid);
               }}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100"
             >
               ×
             </button>
@@ -1001,8 +1036,8 @@ function SearchResultsPopover({
 
   if (query.isFetching && !query.data) {
     return (
-      <div className="absolute left-0 right-0 top-full z-30 mt-2 rounded-md border bg-popover p-3 text-sm shadow-md">
-        <div className="flex items-center gap-2 text-muted-foreground">
+      <div className="bg-popover absolute top-full right-0 left-0 z-30 mt-2 rounded-md border p-3 text-sm shadow-md">
+        <div className="text-muted-foreground flex items-center gap-2">
           <Loader2 className="size-4 animate-spin" /> {t("searching")}
         </div>
       </div>
@@ -1011,22 +1046,22 @@ function SearchResultsPopover({
   const results = query.data ?? [];
   if (results.length === 0) {
     return (
-      <div className="absolute left-0 right-0 top-full z-30 mt-2 rounded-md border bg-popover p-3 text-sm shadow-md">
-        <div className="flex items-center gap-2 text-muted-foreground">
+      <div className="bg-popover absolute top-full right-0 left-0 z-30 mt-2 rounded-md border p-3 text-sm shadow-md">
+        <div className="text-muted-foreground flex items-center gap-2">
           <Search className="size-4" /> {t("noResults")}
         </div>
       </div>
     );
   }
   return (
-    <ul className="absolute left-0 right-0 top-full z-30 mt-2 max-h-96 overflow-auto rounded-md border bg-popover py-1 text-sm shadow-md">
+    <ul className="bg-popover absolute top-full right-0 left-0 z-30 mt-2 max-h-96 overflow-auto rounded-md border py-1 text-sm shadow-md">
       {results.map((r) => (
         <li key={r.appid}>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onPick(r.appid)}
-            className="flex w-full items-center gap-3 px-2 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-3 px-2 py-1.5 text-left transition-colors"
           >
             {r.tinyImage ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -1038,10 +1073,10 @@ function SearchResultsPopover({
                 className="h-6 w-16 shrink-0 rounded object-cover"
               />
             ) : (
-              <div className="h-6 w-16 shrink-0 rounded bg-muted" />
+              <div className="bg-muted h-6 w-16 shrink-0 rounded" />
             )}
             <span className="flex-1 truncate">{r.name}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">
+            <span className="text-muted-foreground shrink-0 text-xs">
               {r.priceVnd != null ? format(r.priceVnd, null) : ""}
             </span>
           </button>

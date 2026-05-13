@@ -43,6 +43,7 @@
       "freeToPlay": "<b>{name}</b> miễn phí trên Steam.",
       "noRegionPrice": "<b>{name}</b> — không có giá tại VN (có thể bị khóa khu vực hoặc chưa phát hành).",
       "selectVersion": "Chọn một phiên bản hoặc DLC ở mục Phiên bản để xem giá.",
+      "unavailable": "Tựa game này không còn được bán trên Steam.",
       "openInSteam": "Steam",
       "released": "Phát hành {date}"
     },

@@ -23,8 +23,13 @@ import type { Edition, GamePriceResult } from "@/lib/steam";
 export type SelectedItem = {
   key: string;
   kind: "package" | "dlc";
+  // Which Steam app this selection points to. For packages this is the root
+  // app (packages live on the root's store page); for DLCs this is the DLC's
+  // own appid (so links resolve to the DLC's page).
+  appid: number;
   name: string;
   imageUrl: string | null;
+  releaseDate: string | null;
   priceVnd: number | null;
   originalPriceVnd: number | null;
   discountPercent: number;

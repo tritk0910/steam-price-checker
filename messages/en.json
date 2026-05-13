@@ -43,6 +43,7 @@
       "freeToPlay": "<b>{name}</b> is free-to-play on Steam.",
       "noRegionPrice": "<b>{name}</b> — no VN price available (maybe region-locked or unreleased).",
       "selectVersion": "Pick an edition or DLC in the Editions card to see a price.",
+      "unavailable": "This title is no longer available on the Steam store.",
       "openInSteam": "Steam",
       "released": "Released {date}"
     },
