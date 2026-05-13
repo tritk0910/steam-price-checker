@@ -42,6 +42,7 @@
       "loading": "Fetching from Steam…",
       "freeToPlay": "<b>{name}</b> is free-to-play on Steam.",
       "noRegionPrice": "<b>{name}</b> — no VN price available (maybe region-locked or unreleased).",
+      "selectVersion": "Pick an edition or DLC in the Editions card to see a price.",
       "openInSteam": "Steam",
       "released": "Released {date}"
     },
@@ -55,21 +56,27 @@
       "volume": "Vol {value}"
     },
     "versions": {
-      "title": "4. Versions",
-      "description": "Pick a different edition, deluxe version, or DLC to update the price and Steam link.",
-      "placeholder": "Select a version",
+      "title": "4. Editions",
+      "description": "Pick one or more editions or DLC. Their prices add up in the comparison.",
+      "placeholder": "Select editions or DLC",
       "base": "Base",
       "dlcPrefix": "DLC",
       "dlcFallback": "App {id}",
       "loading": "Loading…",
       "noAlternatives": "This game has no extra editions or DLC.",
-      "idle": "Fetch a game above to list its editions and DLC."
+      "idle": "Fetch a game above to list its editions and DLC.",
+      "nItemsSelected": "{count} items selected",
+      "modeLabel": "Selection mode",
+      "modeSingle": "Single",
+      "modeMulti": "Multi"
     },
     "params": {
       "title": "5. Parameters",
-      "description": "Tweak the marketplace fee and the gifting-service rate.",
+      "description": "Tweak the marketplace fee, the cash price you pay per key, and the gifting-service rate.",
       "feeLabel": "Marketplace fee (%)",
-      "feeHint": "Default 15. Steam typically takes 13–20%.",
+      "feeHint": "Default 13. Steam typically takes 13–20% on TF2 keys.",
+      "keyBuyLabel": "Key buy price (VND)",
+      "keyBuyHint": "Default 46,000. What a VN trader charges in cash per TF2 key.",
       "giftRateLabel": "Gifting rate (× Steam VN)",
       "giftRateHint": "Typically 0.7–0.8. 0.80 means the service charges 80% of Steam VN price.",
       "usdRateLabel": "VND per 1 USD (for USD display)",

@@ -178,6 +178,9 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
   for (const s of subs) {
     if (typeof s?.packageid !== "number" || seen.has(s.packageid)) continue;
     seen.add(s.packageid);
+    // Skip commercial-license subs (e.g. The Last of Us Part I's "Commercial
+    // License"). They're priced for businesses, not consumer purchases.
+    if (/commercial\s*license/i.test(s.option_text ?? "")) continue;
     const vnE = vn.editions.get(s.packageid);
     if (!vnE) continue;
     const usE = us?.editions.get(s.packageid);

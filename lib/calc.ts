@@ -1,6 +1,12 @@
 export type CalcInputs = {
   gamePriceVnd: number;
+  // Steam Market list price for one TF2 key. Drives the wallet you net after
+  // the marketplace fee (keyListPrice × (1 − fee)).
   keyListPriceVnd: number;
+  // Cash price you actually pay per key — typically the rate a Vietnamese
+  // trader charges, which is lower than the Steam Market list because the
+  // trader doesn't pay the marketplace fee on every transaction.
+  keyBuyPriceVnd: number;
   marketplaceFeePercent: number;
   giftingRate: number | null;
 };
@@ -8,11 +14,12 @@ export type CalcInputs = {
 export type TfRoute = {
   netPerKeyVnd: number;
   keysNeeded: number;
-  // What the keys-needed pile is worth in Steam Wallet — i.e. keysNeeded ×
-  // netPerKey. This is the figure the gifting route is compared against.
+  // Real money spent to acquire the keys (keys × Steam Market price). This is
+  // the figure compared against the gifting route.
   cashPaidVnd: number;
   effectiveCostVnd: number;
-  // Steam Wallet left over after spending on the game (cashPaid − gamePrice).
+  // Steam Wallet left over after the game is bought. Shown for reference only;
+  // it is NOT subtracted from the effective cost.
   walletAfterPurchaseVnd: number;
 };
 
@@ -34,16 +41,17 @@ export function calculate(inputs: CalcInputs): CalcResult {
   const fee = clamp(inputs.marketplaceFeePercent, 0, 100) / 100;
   const netPerKey = Math.max(0, inputs.keyListPriceVnd * (1 - fee));
   const keysNeeded = netPerKey > 0 ? Math.ceil(inputs.gamePriceVnd / netPerKey) : 0;
-  // Cost in Steam Wallet to acquire the game = the wallet you net by selling
-  // keysNeeded keys at the marketplace's after-fee rate.
-  const cashPaid = keysNeeded * netPerKey;
+  const walletReceived = keysNeeded * netPerKey;
+  // Cash you pay for the keys is the trader rate, not the Steam Market price.
+  const cashPaid = keysNeeded * Math.max(0, inputs.keyBuyPriceVnd);
+  const walletAfter = Math.max(0, walletReceived - inputs.gamePriceVnd);
 
   const tf: TfRoute = {
     netPerKeyVnd: round(netPerKey),
     keysNeeded,
     cashPaidVnd: round(cashPaid),
     effectiveCostVnd: round(cashPaid),
-    walletAfterPurchaseVnd: round(Math.max(0, cashPaid - inputs.gamePriceVnd)),
+    walletAfterPurchaseVnd: round(walletAfter),
   };
 
   const gift: GiftRoute | null =

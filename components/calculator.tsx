@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { useTranslations } from "next-intl";
 import { ArrowRight, ExternalLink, Loader2, RefreshCw, Search, X } from "lucide-react";
@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { VersionsCard, type Variant } from "@/components/versions-card";
+import { VersionsCard, type SelectedItem } from "@/components/versions-card";
 import { calculate, formatUsd, formatUsdNative, formatVnd } from "@/lib/calc";
 import { useSearchHistory, type HistoryEntry } from "@/lib/history";
 import {
@@ -31,8 +31,12 @@ import {
 } from "@/lib/steam";
 import { cn } from "@/lib/utils";
 
-const DEFAULT_FEE = 15;
+// Steam's effective fee on TF2 keys ≈ 13% in VN region (list 65k → wallet ~56.5k).
+const DEFAULT_FEE = 13;
 const DEFAULT_GIFT_RATE = 0.8;
+// Typical VN trader rate per TF2 key in cash. Tracks the Steam Market price
+// roughly but the user can adjust as it fluctuates.
+const DEFAULT_KEY_BUY_PRICE = 46_000;
 const DEFAULT_VND_PER_USD = 25_500;
 
 class GameFetchError extends Error {
@@ -92,9 +96,13 @@ export function Calculator() {
   const t = useTranslations();
   const [urlInput, setUrlInput] = useState("");
   const [rootAppId, setRootAppId] = useState<number | null>(null);
-  const [variant, setVariant] = useState<Variant>({ kind: "root" });
+  // Multi-select: each entry is "pkg-{packageid}" or "dlc-{appid}". Order
+  // matters for display (first selected drives the highlight).
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState<"single" | "multi">("single");
 
   const [feePercent, setFeePercent] = useState<string>(String(DEFAULT_FEE));
+  const [keyBuyPrice, setKeyBuyPrice] = useState<string>(String(DEFAULT_KEY_BUY_PRICE));
   const [giftRate, setGiftRate] = useState<string>(String(DEFAULT_GIFT_RATE));
 
   const [showUsd, setShowUsd] = useState(false);
@@ -161,31 +169,27 @@ export function Calculator() {
     addToHistory({ appid: loadedAppId, name: loadedName, image: loadedImage ?? null });
   }, [loadedAppId, loadedName, loadedImage, addToHistory]);
 
-  // When the user hasn't explicitly picked a version, treat the first edition
-  // as the active selection. This keeps the Versions dropdown trigger from
-  // being visually empty after the Bản gốc row was removed.
-  const effectiveVariant: Variant = (() => {
-    if (variant.kind !== "root") return variant;
-    const first = rootGameQuery.data?.editions[0];
-    if (!first) return variant;
-    return {
-      kind: "package",
-      packageid: first.packageid,
-      name: first.name,
-      priceVnd: first.priceVnd,
-      originalPriceVnd: first.originalPriceVnd,
-      discountPercent: first.discountPercent,
-      priceUsd: first.priceUsd,
-      originalPriceUsd: first.originalPriceUsd,
-      discountPercentUsd: first.discountPercentUsd,
-    };
-  })();
+  // Auto-pre-select the base edition whenever a fresh root game finishes
+  // loading, so the user starts with a meaningful price in the comparison.
+  const firstEditionKey = rootGameQuery.data?.editions[0]?.packageid;
+  useEffect(() => {
+    if (firstEditionKey != null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedKeys([`pkg-${firstEditionKey}`]);
+    }
+  }, [firstEditionKey]);
 
-  const dlcAppId = effectiveVariant.kind === "dlc" ? effectiveVariant.appid : null;
-  const dlcGameQuery = useQuery({
-    queryKey: ["game", dlcAppId],
-    queryFn: () => fetchGame(dlcAppId!),
-    enabled: dlcAppId != null,
+  // Fetch DLC details for each currently-selected DLC so we can sum prices.
+  const selectedDlcAppIds = selectedKeys
+    .filter((k) => k.startsWith("dlc-"))
+    .map((k) => Number(k.slice(4)))
+    .filter((n) => Number.isFinite(n));
+  const dlcQueries = useQueries({
+    queries: selectedDlcAppIds.map((id) => ({
+      queryKey: ["game", id],
+      queryFn: () => fetchGame(id),
+      staleTime: 5 * 60 * 1000,
+    })),
   });
 
   const keyQuery = useQuery({
@@ -193,35 +197,87 @@ export function Calculator() {
     queryFn: fetchKey,
   });
 
-  // What the Game card displays.
-  const displayedGame: GamePriceResult | null = (() => {
-    if (effectiveVariant.kind === "dlc") return dlcGameQuery.data ?? null;
-    const root = rootGameQuery.data;
-    if (!root) return null;
-    if (effectiveVariant.kind === "package") {
-      return {
-        ...root,
-        name: mergeNames(root.name, effectiveVariant.name),
-        priceVnd: effectiveVariant.priceVnd,
-        initialPriceVnd: effectiveVariant.originalPriceVnd ?? effectiveVariant.priceVnd,
-        discountPercent: effectiveVariant.discountPercent,
-        priceUsd: effectiveVariant.priceUsd,
-        initialPriceUsd: effectiveVariant.originalPriceUsd ?? effectiveVariant.priceUsd,
-        discountPercentUsd: effectiveVariant.discountPercentUsd,
-        formatted: null,
-      };
-    }
-    return root;
-  })();
+  // Resolve each selected key into a SelectedItem with name + pricing. Items
+  // whose data is still loading or missing are kept as null and excluded from
+  // totals.
+  const selectedItems: SelectedItem[] = selectedKeys
+    .map((key): SelectedItem | null => {
+      if (key.startsWith("pkg-")) {
+        const id = Number(key.slice(4));
+        const edition = rootGameQuery.data?.editions.find((e) => e.packageid === id);
+        if (!edition) return null;
+        return {
+          key,
+          kind: "package",
+          name: edition.name,
+          imageUrl: rootGameQuery.data?.imageUrl ?? null,
+          priceVnd: edition.priceVnd,
+          originalPriceVnd: edition.originalPriceVnd,
+          discountPercent: edition.discountPercent,
+          priceUsd: edition.priceUsd,
+          originalPriceUsd: edition.originalPriceUsd,
+          discountPercentUsd: edition.discountPercentUsd,
+        };
+      }
+      if (key.startsWith("dlc-")) {
+        const id = Number(key.slice(4));
+        const idx = selectedDlcAppIds.indexOf(id);
+        const data = idx >= 0 ? dlcQueries[idx]?.data : null;
+        if (!data) return null;
+        return {
+          key,
+          kind: "dlc",
+          name: data.name,
+          imageUrl: data.imageUrl,
+          priceVnd: data.priceVnd,
+          originalPriceVnd: data.initialPriceVnd,
+          discountPercent: data.discountPercent,
+          priceUsd: data.priceUsd,
+          originalPriceUsd: data.initialPriceUsd,
+          discountPercentUsd: data.discountPercentUsd,
+        };
+      }
+      return null;
+    })
+    .filter((x): x is SelectedItem => x != null);
 
-  const displayedSteamUrl = displayedGame
-    ? `https://store.steampowered.com/app/${displayedGame.appid}/`
+  const totalVnd = selectedItems.reduce((sum, i) => sum + (i.priceVnd ?? 0), 0) || null;
+  const totalUsd = selectedItems.every((i) => i.priceUsd != null)
+    ? selectedItems.reduce((sum, i) => sum + (i.priceUsd ?? 0), 0)
     : null;
 
-  const displayedQuery = effectiveVariant.kind === "dlc" ? dlcGameQuery : rootGameQuery;
+  // The Game card always shows the root game's banner/name; price reflects the
+  // sum across the current selection.
+  // Single-selection: use that item's own banner (DLC has its own header).
+  // Multi-selection (or empty): fall back to the root game's banner.
+  const displayedImageUrl =
+    selectedItems.length === 1
+      ? (selectedItems[0].imageUrl ?? rootGameQuery.data?.imageUrl ?? null)
+      : (rootGameQuery.data?.imageUrl ?? null);
+
+  const displayedGame: GamePriceResult | null = rootGameQuery.data
+    ? {
+        ...rootGameQuery.data,
+        imageUrl: displayedImageUrl,
+        priceVnd: totalVnd,
+        initialPriceVnd: null,
+        discountPercent: 0,
+        priceUsd: totalUsd,
+        initialPriceUsd: null,
+        discountPercentUsd: 0,
+        formatted: null,
+      }
+    : null;
+
+  const displayedSteamUrl = rootGameQuery.data
+    ? `https://store.steampowered.com/app/${rootGameQuery.data.appid}/`
+    : null;
+
+  const displayedQuery = rootGameQuery;
 
   const marketKeyPrice = keyQuery.data?.lowestPriceVnd ?? null;
   const effectiveFee = parseNumber(feePercent) ?? DEFAULT_FEE;
+  const effectiveKeyBuy = parseNumber(keyBuyPrice) ?? DEFAULT_KEY_BUY_PRICE;
   const effectiveGiftRate = parseNumber(giftRate);
   const usdRate = parseNumber(vndPerUsd) ?? DEFAULT_VND_PER_USD;
 
@@ -231,6 +287,7 @@ export function Calculator() {
       ? calculate({
           gamePriceVnd,
           keyListPriceVnd: marketKeyPrice,
+          keyBuyPriceVnd: effectiveKeyBuy,
           marketplaceFeePercent: effectiveFee,
           giftingRate: effectiveGiftRate,
         })
@@ -238,9 +295,22 @@ export function Calculator() {
 
   const loadGame = (appid: number, urlIfKnown?: string) => {
     setRootAppId(appid);
-    setVariant({ kind: "root" });
+    // Clear selection; auto-select effect re-picks the base edition when the
+    // new root data arrives.
+    setSelectedKeys([]);
     setUrlInput(urlIfKnown ?? `https://store.steampowered.com/app/${appid}/`);
     setSearchOpen(false);
+  };
+
+  // Switching modes:
+  //   single → multi  : keep current selection (already ≤1 item).
+  //   multi  → single : if >1 selected, reset to just the base edition.
+  const onSelectionModeChange = (mode: "single" | "multi") => {
+    setSelectionMode(mode);
+    if (mode === "single" && selectedKeys.length > 1) {
+      const baseKey = firstEditionKey != null ? `pkg-${firstEditionKey}` : null;
+      setSelectedKeys(baseKey ? [baseKey] : []);
+    }
   };
 
   const onSubmit = (e: React.FormEvent) => {
@@ -356,6 +426,7 @@ export function Calculator() {
               query={displayedQuery}
               displayed={displayedGame}
               steamUrl={displayedSteamUrl}
+              hasSelection={selectedKeys.length > 0}
               format={fmtPair}
             />
           </CardContent>
@@ -393,8 +464,10 @@ export function Calculator() {
           <VersionsCard
             className="lg:flex-1"
             rootGame={rootGameQuery.data ?? null}
-            variant={effectiveVariant}
-            onChange={setVariant}
+            selectedKeys={selectedKeys}
+            onChange={setSelectedKeys}
+            mode={selectionMode}
+            onModeChange={onSelectionModeChange}
             format={fmtPair}
           />
         </div>
@@ -412,6 +485,14 @@ export function Calculator() {
                 inputMode="decimal"
                 value={feePercent}
                 onChange={(e) => setFeePercent(e.target.value)}
+              />
+            </Field>
+            <Field label={t("steps.params.keyBuyLabel")} hint={t("steps.params.keyBuyHint")}>
+              <Input
+                inputMode="numeric"
+                value={keyBuyPrice}
+                onChange={(e) => setKeyBuyPrice(e.target.value)}
+                placeholder={String(DEFAULT_KEY_BUY_PRICE)}
               />
             </Field>
             <Field label={t("steps.params.giftRateLabel")} hint={t("steps.params.giftRateHint")}>
@@ -541,11 +622,13 @@ function GameSummary({
   query,
   displayed,
   steamUrl,
+  hasSelection,
   format,
 }: {
   query: ReturnType<typeof useQuery<GamePriceResult>>;
   displayed: GamePriceResult | null;
   steamUrl: string | null;
+  hasSelection: boolean;
   format: (vnd: number | null | undefined, usd: number | null | undefined) => string;
 }) {
   const t = useTranslations();
@@ -621,10 +704,12 @@ function GameSummary({
         {banner}
         {titleRow}
         <p className="text-muted-foreground">
-          {t.rich("steps.summary.noRegionPrice", {
-            name: g.name,
-            b: (chunks) => <strong>{chunks}</strong>,
-          })}
+          {hasSelection
+            ? t.rich("steps.summary.noRegionPrice", {
+                name: g.name,
+                b: (chunks) => <strong>{chunks}</strong>,
+              })
+            : t("steps.summary.selectVersion")}
         </p>
       </div>
     );
@@ -783,18 +868,6 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Combine a root game name with an edition's name without producing awkward
-// duplicates like "Forza Horizon 6 — Forza Horizon" or
-// "DMC5 — DMC5 + Vergil". When either string is a prefix of the other,
-// just use the longer one; otherwise join with an em-dash.
-function mergeNames(root: string, edition: string): string {
-  const rLower = root.toLowerCase();
-  const eLower = edition.toLowerCase();
-  if (rLower === eLower) return root;
-  if (eLower.startsWith(rLower)) return edition;
-  if (rLower.startsWith(eLower)) return root;
-  return `${root} — ${edition}`;
-}
 
 function SearchResultsPopover({
   query,
