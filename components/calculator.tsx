@@ -708,7 +708,7 @@ function GameSummary({
       <div className="flex min-w-0 flex-col gap-3 text-sm">
         {banner}
         {titleRow}
-        <p className="break-words">
+        <p className="wrap-break-word">
           {t.rich("steps.summary.freeToPlay", {
             name: g.name,
             b: (chunks) => <strong>{chunks}</strong>,
@@ -727,7 +727,7 @@ function GameSummary({
       <div className="flex min-w-0 flex-col gap-3 text-sm">
         {banner}
         {titleRow}
-        <p className="break-words text-muted-foreground">
+        <p className="wrap-break-word text-muted-foreground">
           {hasSelection
             ? t.rich("steps.summary.noRegionPrice", {
                 name: g.name,
