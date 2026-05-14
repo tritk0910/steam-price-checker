@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 
+import { AnimatedGridPattern } from "@/components/ui/animated-grid-pattern";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -21,7 +22,14 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} className="h-full antialiased" suppressHydrationWarning>
-      <body className="flex min-h-full flex-col">
+      <body className="relative flex min-h-full flex-col">
+        <AnimatedGridPattern
+          numSquares={30}
+          maxOpacity={0.15}
+          duration={3}
+          repeatDelay={1}
+          className="fixed inset-0 -z-10 h-screen w-screen skew-y-12 mask-[radial-gradient(ellipse_at_center,white,transparent_75%)]"
+        />
         <NextIntlClientProvider locale={locale} messages={messages}>
           <Providers>{children}</Providers>
         </NextIntlClientProvider>
