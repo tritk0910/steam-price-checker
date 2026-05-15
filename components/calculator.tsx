@@ -18,10 +18,11 @@ import { VersionsCard, type SelectedItem } from "@/components/versions-card";
 import { calculate, formatReleaseDate, formatUsd, formatUsdNative, formatVnd } from "@/lib/calc";
 import { useSearchHistory, type HistoryEntry } from "@/lib/history";
 import {
-  extractAppId,
+  extractSteamItem,
   type GamePriceResult,
   type KeyPriceResult,
   type SearchResult,
+  type SteamItemRef,
 } from "@/lib/steam";
 import { cn } from "@/lib/utils";
 import { Backlight } from "./ui/backlight";
@@ -43,9 +44,10 @@ class GameFetchError extends Error {
   }
 }
 
-async function fetchGame(appid: number): Promise<GamePriceResult> {
+async function fetchItem(ref: SteamItemRef): Promise<GamePriceResult> {
+  const url = ref.kind === "bundle" ? `/api/bundle/${ref.id}` : `/api/game/${ref.id}`;
   try {
-    const { data } = await axios.get<GamePriceResult>(`/api/game/${appid}`);
+    const { data } = await axios.get<GamePriceResult>(url);
     return data;
   } catch (err) {
     if (axios.isAxiosError(err) && err.response) {
@@ -54,6 +56,11 @@ async function fetchGame(appid: number): Promise<GamePriceResult> {
     }
     throw err;
   }
+}
+
+// DLC always resolves as an app — convenience wrapper for the per-DLC queries.
+async function fetchGame(appid: number): Promise<GamePriceResult> {
+  return fetchItem({ kind: "app", id: appid });
 }
 
 async function fetchKey(): Promise<KeyPriceResult> {
@@ -89,7 +96,7 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 export function Calculator() {
   const t = useTranslations();
   const [urlInput, setUrlInput] = useState("");
-  const [rootAppId, setRootAppId] = useState<number | null>(null);
+  const [rootItem, setRootItem] = useState<SteamItemRef | null>(null);
   // Multi-select: each entry is "pkg-{packageid}" or "dlc-{appid}". Order
   // matters for display (first selected drives the highlight).
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -118,13 +125,13 @@ export function Calculator() {
     }
   }, [rateQuery.data]);
 
-  const parsedAppIdFromInput = extractAppId(urlInput);
+  const parsedItemFromInput = extractSteamItem(urlInput);
 
   // When the user types a non-URL/id, treat as a Steam search query.
   const [searchOpen, setSearchOpen] = useState(false);
   const debouncedQuery = useDebouncedValue(urlInput, 300);
   const hasSearchTerm = debouncedQuery.trim().length >= 2;
-  const isSearchable = !parsedAppIdFromInput && hasSearchTerm && searchOpen;
+  const isSearchable = !parsedItemFromInput && hasSearchTerm && searchOpen;
   const searchQuery = useQuery({
     queryKey: ["search", debouncedQuery.trim()],
     queryFn: () => fetchSearch(debouncedQuery.trim()),
@@ -135,32 +142,35 @@ export function Calculator() {
   // When the input is a URL/appid, fetch a preview so the dropdown can show a
   // single confirmation row before the user submits.
   const previewQuery = useQuery({
-    queryKey: ["game", parsedAppIdFromInput],
-    queryFn: () => fetchGame(parsedAppIdFromInput!),
-    enabled: parsedAppIdFromInput != null && searchOpen,
+    queryKey: ["item", parsedItemFromInput?.kind, parsedItemFromInput?.id],
+    queryFn: () => fetchItem(parsedItemFromInput!),
+    enabled: parsedItemFromInput != null && searchOpen,
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
 
   // The popover shows: search results, URL preview, or recent history.
   const showPopover =
-    searchOpen && (parsedAppIdFromInput != null || hasSearchTerm || history.length > 0);
+    searchOpen && (parsedItemFromInput != null || hasSearchTerm || history.length > 0);
 
   const rootGameQuery = useQuery({
-    queryKey: ["game", rootAppId],
-    queryFn: () => fetchGame(rootAppId!),
-    enabled: rootAppId != null,
+    queryKey: ["item", rootItem?.kind, rootItem?.id],
+    queryFn: () => fetchItem(rootItem!),
+    enabled: rootItem != null,
   });
 
   // Push the root game into history once its details arrive — works for both
-  // URL submits and search-picked games.
+  // URL submits and search-picked games. Bundles are skipped because the
+  // history popover assumes everything in it is an app (its onPick rebuilds
+  // an /app/{id}/ URL).
   const loadedAppId = rootGameQuery.data?.appid ?? null;
+  const loadedKind = rootGameQuery.data?.kind ?? null;
   const loadedName = rootGameQuery.data?.name;
   const loadedImage = rootGameQuery.data?.imageUrl;
   useEffect(() => {
-    if (loadedAppId == null || !loadedName) return;
+    if (loadedAppId == null || !loadedName || loadedKind !== "app") return;
     addToHistory({ appid: loadedAppId, name: loadedName, image: loadedImage ?? null });
-  }, [loadedAppId, loadedName, loadedImage, addToHistory]);
+  }, [loadedAppId, loadedKind, loadedName, loadedImage, addToHistory]);
 
   // Auto-pre-select the base edition whenever a fresh root game finishes
   // loading, so the user starts with a meaningful price in the comparison.
@@ -239,10 +249,17 @@ export function Calculator() {
     })
     .filter((x): x is SelectedItem => x != null);
 
-  const totalVnd = selectedItems.reduce((sum, i) => sum + (i.priceVnd ?? 0), 0) || null;
-  const totalUsd = selectedItems.every((i) => i.priceUsd != null)
-    ? selectedItems.reduce((sum, i) => sum + (i.priceUsd ?? 0), 0)
-    : null;
+  // Bundles are atomic — the bundle's own price drives the comparison, not a
+  // sum of its contents (you can't unbundle).
+  const isBundle = rootGameQuery.data?.kind === "bundle";
+  const totalVnd = isBundle
+    ? (rootGameQuery.data?.priceVnd ?? null)
+    : selectedItems.reduce((sum, i) => sum + (i.priceVnd ?? 0), 0) || null;
+  const totalUsd = isBundle
+    ? (rootGameQuery.data?.priceUsd ?? null)
+    : selectedItems.every((i) => i.priceUsd != null)
+      ? selectedItems.reduce((sum, i) => sum + (i.priceUsd ?? 0), 0)
+      : null;
 
   // Single-selection: use that item's own banner + name (so the Game card
   // matches what's shown in the Versions dropdown trigger).
@@ -253,9 +270,7 @@ export function Calculator() {
       ? (selectedItems[0].imageUrl ?? rootGameQuery.data?.imageUrl ?? null)
       : (rootGameQuery.data?.imageUrl ?? null);
   const displayedName =
-    selectedItems.length === 1
-      ? labelForSelectedItem(selectedItems[0], rootName)
-      : rootName;
+    selectedItems.length === 1 ? labelForSelectedItem(selectedItems[0], rootName) : rootName;
 
   // For single-selection: route appid + release date through that item so the
   // Steam link points to its page (DLC → DLC page) and the displayed release
@@ -270,18 +285,22 @@ export function Calculator() {
         imageUrl: displayedImageUrl,
         releaseDate: singleSelected?.releaseDate ?? rootGameQuery.data.releaseDate,
         priceVnd: totalVnd,
-        initialPriceVnd: null,
-        discountPercent: 0,
+        // Bundles surface their headline discount (the whole point of buying
+        // one). Apps/multi-selection don't have a meaningful aggregate discount.
+        initialPriceVnd: isBundle ? rootGameQuery.data.initialPriceVnd : null,
+        discountPercent: isBundle ? rootGameQuery.data.discountPercent : 0,
         priceUsd: totalUsd,
-        initialPriceUsd: null,
-        discountPercentUsd: 0,
+        initialPriceUsd: isBundle ? rootGameQuery.data.initialPriceUsd : null,
+        discountPercentUsd: isBundle ? rootGameQuery.data.discountPercentUsd : 0,
         formatted: null,
       }
     : null;
 
-  const displayedSteamUrl = displayedGame
-    ? `https://store.steampowered.com/app/${displayedGame.appid}/`
-    : null;
+  const displayedSteamUrl = !displayedGame
+    ? null
+    : displayedGame.kind === "bundle"
+      ? `https://store.steampowered.com/bundle/${displayedGame.appid}/`
+      : `https://store.steampowered.com/app/${displayedGame.appid}/`;
 
   const displayedQuery = rootGameQuery;
 
@@ -303,12 +322,16 @@ export function Calculator() {
         })
       : null;
 
-  const loadGame = (appid: number, urlIfKnown?: string) => {
-    setRootAppId(appid);
+  const loadItem = (ref: SteamItemRef, urlIfKnown?: string) => {
+    setRootItem(ref);
     // Clear selection; auto-select effect re-picks the base edition when the
-    // new root data arrives.
+    // new root data arrives (bundles have no editions, so it stays empty).
     setSelectedKeys([]);
-    setUrlInput(urlIfKnown ?? `https://store.steampowered.com/app/${appid}/`);
+    const fallback =
+      ref.kind === "bundle"
+        ? `https://store.steampowered.com/bundle/${ref.id}/`
+        : `https://store.steampowered.com/app/${ref.id}/`;
+    setUrlInput(urlIfKnown ?? fallback);
     setSearchOpen(false);
   };
 
@@ -325,7 +348,7 @@ export function Calculator() {
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (parsedAppIdFromInput) loadGame(parsedAppIdFromInput, urlInput);
+    if (parsedItemFromInput) loadItem(parsedItemFromInput, urlInput);
   };
 
   const fmt = (v: number | null | undefined) =>
@@ -347,7 +370,14 @@ export function Calculator() {
       <header className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Image src="/logo.png" alt="" width={150} height={150} className="text-foreground" />
+            <Image
+              src="/logo.png"
+              alt=""
+              width={150}
+              height={150}
+              loading="eager"
+              className="text-foreground"
+            />
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
               {t("header.title")}
             </h1>
@@ -403,18 +433,16 @@ export function Calculator() {
                 <SearchResultsPopover
                   query={searchQuery}
                   previewQuery={previewQuery}
-                  previewAppId={parsedAppIdFromInput}
+                  previewItem={parsedItemFromInput}
                   hasSearchTerm={hasSearchTerm}
                   history={history}
-                  onPick={(appid) =>
-                    loadGame(appid, `https://store.steampowered.com/app/${appid}/`)
-                  }
+                  onPick={(ref) => loadItem(ref)}
                   onRemoveHistory={removeFromHistory}
                   format={fmtPair}
                 />
               ) : null}
             </div>
-            <Button type="submit" disabled={!parsedAppIdFromInput}>
+            <Button type="submit" disabled={!parsedItemFromInput}>
               {rootGameQuery.isFetching ? (
                 <Loader2 className="animate-spin" />
               ) : (
@@ -727,7 +755,7 @@ function GameSummary({
       <div className="flex min-w-0 flex-col gap-3 text-sm">
         {banner}
         {titleRow}
-        <p className="wrap-break-word text-muted-foreground">
+        <p className="text-muted-foreground wrap-break-word">
           {hasSelection
             ? t.rich("steps.summary.noRegionPrice", {
                 name: g.name,
@@ -911,7 +939,7 @@ function labelForSelectedItem(item: SelectedItem, rootName: string): string {
 function SearchResultsPopover({
   query,
   previewQuery,
-  previewAppId,
+  previewItem,
   hasSearchTerm,
   history,
   format,
@@ -920,17 +948,17 @@ function SearchResultsPopover({
 }: {
   query: ReturnType<typeof useQuery<SearchResult[]>>;
   previewQuery: ReturnType<typeof useQuery<GamePriceResult>>;
-  previewAppId: number | null;
+  previewItem: SteamItemRef | null;
   hasSearchTerm: boolean;
   history: HistoryEntry[];
   format: (vnd: number | null | undefined, usd: number | null | undefined) => string;
-  onPick: (appid: number) => void;
+  onPick: (ref: SteamItemRef) => void;
   onRemoveHistory: (appid: number) => void;
 }) {
   const t = useTranslations("steps.game");
 
   // Input looks like a Steam URL / appid → show a single preview row.
-  if (previewAppId != null) {
+  if (previewItem != null) {
     if (previewQuery.isFetching && !previewQuery.data) {
       return (
         <div className="bg-popover absolute top-full right-0 left-0 z-30 mt-2 rounded-md border p-3 text-sm shadow-md">
@@ -961,7 +989,7 @@ function SearchResultsPopover({
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onPick(g.appid)}
+            onClick={() => onPick({ kind: previewItem.kind, id: g.appid })}
             className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-3 px-2 py-1.5 text-left transition-colors"
           >
             {g.imageUrl ? (
@@ -999,7 +1027,7 @@ function SearchResultsPopover({
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => onPick(h.appid)}
+              onClick={() => onPick({ kind: "app", id: h.appid })}
               className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-3 px-2 py-1.5 pr-9 text-left transition-colors"
             >
               {h.image ? (
@@ -1060,7 +1088,7 @@ function SearchResultsPopover({
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onPick(r.appid)}
+            onClick={() => onPick({ kind: "app", id: r.appid })}
             className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-3 px-2 py-1.5 text-left transition-colors"
           >
             {r.tinyImage ? (

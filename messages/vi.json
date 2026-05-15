@@ -57,19 +57,21 @@
       "volume": "Khối lượng {value}"
     },
     "versions": {
-      "title": "4. Phiên bản",
-      "description": "Chọn một hoặc nhiều phiên bản hay DLC. Tổng giá sẽ tự cộng dồn trong phần so sánh.",
+      "title": "4. Phiên bản / Nội dung",
+      "description": "Với game: chọn một hoặc nhiều phiên bản hay DLC — giá sẽ tự cộng dồn. Với bundle: danh sách các mục đi kèm hiển thị để tham khảo.",
       "placeholder": "Chọn phiên bản hoặc DLC",
       "base": "Bản gốc",
       "dlcPrefix": "DLC",
       "dlcFallback": "App {id}",
       "loading": "Đang tải…",
-      "noAlternatives": "Game này không có phiên bản hoặc DLC bổ sung.",
-      "idle": "Tra một game ở trên để xem các phiên bản và DLC.",
+      "noAlternatives": "Tựa này không có phiên bản hoặc DLC bổ sung.",
+      "idle": "Tra một game hoặc bundle ở trên để xem các phiên bản, DLC, hoặc nội dung.",
       "nItemsSelected": "Đã chọn {count} mục",
       "modeLabel": "Chế độ chọn",
       "modeSingle": "Đơn",
-      "modeMulti": "Đa"
+      "modeMulti": "Đa",
+      "bundleSummary": "Bundle gồm {count, plural, =1 {1 mục} other {# mục}}",
+      "bundleContentsHeading": "Đi kèm trong bundle"
     },
     "params": {
       "title": "5. Thông số",

@@ -57,19 +57,21 @@
       "volume": "Vol {value}"
     },
     "versions": {
-      "title": "4. Editions",
-      "description": "Pick one or more editions or DLC. Their prices add up in the comparison.",
+      "title": "4. Editions / Contents",
+      "description": "For games: pick one or more editions or DLC — prices add up. For bundles: the items included are shown for reference.",
       "placeholder": "Select editions or DLC",
       "base": "Base",
       "dlcPrefix": "DLC",
       "dlcFallback": "App {id}",
       "loading": "Loading…",
-      "noAlternatives": "This game has no extra editions or DLC.",
-      "idle": "Fetch a game above to list its editions and DLC.",
+      "noAlternatives": "This title has no extra editions or DLC.",
+      "idle": "Fetch a game or bundle above to list its editions, DLC, or contents.",
       "nItemsSelected": "{count} items selected",
       "modeLabel": "Selection mode",
       "modeSingle": "Single",
-      "modeMulti": "Multi"
+      "modeMulti": "Multi",
+      "bundleSummary": "Bundle of {count, plural, =1 {1 item} other {# items}}",
+      "bundleContentsHeading": "Included in this bundle"
     },
     "params": {
       "title": "5. Parameters",

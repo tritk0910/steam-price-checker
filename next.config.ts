@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "shared.fastly.steamstatic.com",
+        pathname: "/store_item_assets/**",
+      },
+      {
+        protocol: "https",
         hostname: "cdn.akamai.steamstatic.com",
         pathname: "/steam/apps/**",
       },

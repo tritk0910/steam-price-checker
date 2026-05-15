@@ -9,7 +9,15 @@
       "Bash(curl -s http://localhost:3000/api/tf2-key)",
       "Bash(yarn tsc *)",
       "Bash(yarn lint *)",
-      "Bash(curl -s 'https://store.steampowered.com/api/appdetails?appids=814380&cc=vn&l=english&filters=basic,price_overview')"
+      "Bash(curl -s 'https://store.steampowered.com/api/appdetails?appids=814380&cc=vn&l=english&filters=basic,price_overview')",
+      "Bash(mkdir -p \"c:/Users/erizo/Desktop/steam_price_calculator/app/api/bundle/[bundleid]\")",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(curl -sS -A \"Mozilla/5.0\" \"https://store.steampowered.com/actions/ajaxresolvebundles?bundleids=63469&cc=vn&l=english\")",
+      "Bash(curl -sS -A \"Mozilla/5.0\" \"https://store.steampowered.com/actions/ajaxresolvebundles?bundleids=63469&cc=us&l=english\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\erizo\\Desktop\\steam_price_calculator\\app\\api\\bundle"
     ]
   }
 }

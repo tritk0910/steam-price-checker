@@ -30,6 +30,9 @@ export type Edition = {
 };
 
 export type GamePriceResult = {
+  // "bundle" reuses this shape with empty editions/dlc and a populated
+  // bundleAppIds. `appid` holds the bundleid when kind === "bundle".
+  kind: "app" | "bundle";
   appid: number;
   name: string;
   imageUrl: string | null;
@@ -45,7 +48,10 @@ export type GamePriceResult = {
   releaseDate: string | null;
   editions: Edition[];
   dlcAppIds: number[];
+  bundleAppIds: number[];
 };
+
+export type SteamItemRef = { kind: "app" | "bundle"; id: number };
 
 export type KeyPriceResult = {
   lowestPriceVnd: number | null;
@@ -55,12 +61,16 @@ export type KeyPriceResult = {
   rawMedian: string | null;
 };
 
-export function extractAppId(input: string): number | null {
+export function extractSteamItem(input: string): SteamItemRef | null {
   if (!input) return null;
   const trimmed = input.trim();
-  if (/^\d+$/.test(trimmed)) return Number(trimmed);
-  const match = trimmed.match(/\/app\/(\d+)/i);
-  return match ? Number(match[1]) : null;
+  // Bare numbers stay as app ids — keeps the historical "paste 1551360" UX.
+  if (/^\d+$/.test(trimmed)) return { kind: "app", id: Number(trimmed) };
+  const bundle = trimmed.match(/\/bundle\/(\d+)/i);
+  if (bundle) return { kind: "bundle", id: Number(bundle[1]) };
+  const app = trimmed.match(/\/app\/(\d+)/i);
+  if (app) return { kind: "app", id: Number(app[1]) };
+  return null;
 }
 
 function parseVndAmount(raw: string | null | undefined): number | null {
@@ -207,6 +217,7 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
     : [];
 
   return {
+    kind: "app",
     appid,
     name: gameName,
     imageUrl: vnData.header_image ?? null,
@@ -222,6 +233,126 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
     releaseDate: vnData.release_date?.date ?? null,
     editions,
     dlcAppIds,
+    bundleAppIds: [],
+  };
+}
+
+type BundleData = {
+  bundleid?: number;
+  name?: string;
+  header_image_url?: string;
+  main_capsule?: string;
+  // Steam returns these in minor units (× 100), same as price_overview.
+  final_price?: number;
+  initial_price?: number;
+  discount_percent?: number;
+  formatted_final_price?: string;
+  formatted_orig_price?: string;
+  type?: string;
+  appids?: unknown[];
+};
+
+type BundleRegion = {
+  final: number | null;
+  initial: number | null;
+  discountPercent: number;
+  formatted: string | null;
+};
+
+async function fetchBundleData(bundleId: number, cc: string): Promise<BundleData | null> {
+  const { data } = await http.get(`${STEAM_STORE}/actions/ajaxresolvebundles`, {
+    params: { bundleids: bundleId, cc, l: "english" },
+  });
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const entry = data[0];
+  if (!entry || typeof entry !== "object") return null;
+  return entry as BundleData;
+}
+
+function parseUsdAmount(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  // US locale: "$1,234.56" — strip everything that isn't a digit or dot; the
+  // comma is purely a thousands separator and gets dropped.
+  const cleaned = raw.replace(/[^\d.]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseBundleRegion(b: BundleData, cc: string): BundleRegion {
+  const discount = typeof b.discount_percent === "number" ? b.discount_percent : 0;
+  // `final_price` on ajaxresolvebundles is unreliable (often 0 even when the
+  // bundle is paid) and `initial_price` is the raw sum-of-items rather than
+  // the user-facing strikethrough. The formatted strings are what the Steam
+  // bundle page actually renders, so parse those — they're also internally
+  // consistent with `discount_percent`.
+  const parse = cc === "us" ? parseUsdAmount : parseVndAmount;
+  let final = parse(b.formatted_final_price);
+  let initial = parse(b.formatted_orig_price);
+  if (final == null && typeof b.final_price === "number" && b.final_price > 0) {
+    final = b.final_price / 100;
+  }
+  if (initial == null && final != null && discount > 0) {
+    initial = Math.round(final / (1 - discount / 100));
+  }
+  return {
+    final,
+    initial,
+    discountPercent: discount,
+    formatted: b.formatted_final_price ?? null,
+  };
+}
+
+export async function fetchBundlePrice(bundleId: number): Promise<GamePriceResult> {
+  const [vnRes, usRes] = await Promise.allSettled([
+    fetchBundleData(bundleId, "vn"),
+    fetchBundleData(bundleId, "us"),
+  ]);
+
+  if (vnRes.status === "rejected") throw vnRes.reason;
+  const vnData = vnRes.value;
+  if (!vnData) throw new Error("Steam returned no data for this bundle id.");
+  // Complete-the-set bundles price differently per user (depends on owned
+  // items) and need a logged-in session. Surface a clear message instead of
+  // a misleading "starting from" figure.
+  if (vnData.type === "complete_the_set") {
+    throw new Error(
+      "This bundle's price depends on what you already own. Sign in to Steam to view it.",
+    );
+  }
+  const usData = usRes.status === "fulfilled" ? usRes.value : null;
+
+  const vn = parseBundleRegion(vnData, "vn");
+  const us = usData ? parseBundleRegion(usData, "us") : null;
+
+  const bundleAppIds: number[] = Array.isArray(vnData.appids)
+    ? Array.from(
+        new Set(
+          vnData.appids.filter(
+            (id: unknown): id is number => typeof id === "number" && id > 0,
+          ),
+        ),
+      )
+    : [];
+
+  return {
+    kind: "bundle",
+    appid: bundleId,
+    name: vnData.name ?? `Bundle ${bundleId}`,
+    imageUrl: vnData.header_image_url ?? vnData.main_capsule ?? null,
+    isFree: false,
+    currency: "VND",
+    priceVnd: vn.final,
+    initialPriceVnd: vn.initial,
+    discountPercent: vn.discountPercent,
+    priceUsd: us?.final ?? null,
+    initialPriceUsd: us?.initial ?? null,
+    discountPercentUsd: us?.discountPercent ?? 0,
+    formatted: vn.formatted,
+    releaseDate: null,
+    editions: [],
+    dlcAppIds: [],
+    bundleAppIds,
   };
 }
 
