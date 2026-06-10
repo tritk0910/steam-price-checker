@@ -2,7 +2,7 @@
 
 Find the cheapest way to buy a Steam game in Vietnam. The app compares two
 real-world purchase routes for any Steam title and tells you which one costs
-less than paying the Steam VN sticker price:
+less than the Steam VN sticker price:
 
 1. **Buy via a gifting service** — pay a fraction of the Steam VN price in cash.
 2. **Sell TF2 keys for Steam Wallet** — buy *Mann Co. Supply Crate Keys*, list
@@ -14,15 +14,14 @@ shifts with the market — this tool does the math for both and highlights the
 winner.
 
 <p align="center">
-  <img src="docs/screenshot-dark.png" alt="Steam Price Calculator — dark mode" width="49%" />
-  <img src="docs/screenshot-light.png" alt="Steam Price Calculator — light mode" width="49%" />
+  <img src="docs/screenshot-result.png" alt="Steam Price Calculator — Elden Ring comparison result" width="100%" />
 </p>
 
 ## Features
 
 - **Paste, search, or recall** — accepts a Steam store URL, a bare app id, a
   `/bundle/` URL, or a free-text game name (live Steam search). Recently viewed
-  games are remembered in `localStorage`.
+  games are stored in `localStorage`.
 - **Editions, DLC & bundles** — pick one or more editions/DLC and their prices
   add up; bundles are priced atomically and list their contents for reference.
 - **Live TF2 key price** — pulls the lowest/median listing and sale volume for
@@ -30,12 +29,13 @@ winner.
   button.
 - **Side-by-side comparison** — shows keys-needed, net Wallet per key, cash
   spent, leftover Wallet, and the gifting total, then flags the cheapest route
-  and your saving (or loss) versus buying directly on Steam VN.
-- **Tunable parameters** — marketplace fee %, cash price per key, and the
-  gifting rate multiplier are all adjustable.
+  and your saving versus the other method.
+- **Tunable parameters** — marketplace fee %, cash price per key, gifting rate,
+  and VND/USD rate are all adjustable inline.
 - **VND ⇄ USD** — toggle the whole UI between VND and USD using a live exchange
   rate (auto-fetched, overridable).
-- **English / Vietnamese** and **light / dark** themes.
+- **English / Vietnamese** i18n via `next-intl`.
+- **WebGL animated background** and subtle GSAP intro animation.
 
 ## How the math works
 
@@ -63,7 +63,7 @@ giftTotal = gamePrice × giftingRate                  // e.g. rate 0.80 = 80% of
 ```
 
 The cheaper of `cashPaid` and `giftTotal` wins, and the app reports the
-difference against the full Steam VN price.
+difference.
 
 ### Default assumptions
 
@@ -79,9 +79,10 @@ difference against the full Steam VN price.
 - [Next.js 16](https://nextjs.org) (App Router, API routes, Turbopack)
 - React 19 + TypeScript
 - [Tailwind CSS v4](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com) (Radix primitives)
-- [TanStack Query](https://tanstack.com/query) for data fetching/caching
-- [next-intl](https://next-intl.dev) for i18n, [next-themes](https://github.com/pacocoursey/next-themes) for theming
-- [Axios](https://axios-http.com), [Motion](https://motion.dev) for subtle animation
+- [TanStack Query](https://tanstack.com/query) for data fetching and caching
+- [next-intl](https://next-intl.dev) for i18n (EN / VI)
+- [GSAP](https://gsap.com) for intro animation
+- [Axios](https://axios-http.com) for HTTP
 
 ## Getting started
 
@@ -96,8 +97,8 @@ yarn dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000), paste a Steam URL such as
-`https://store.steampowered.com/app/1551360/Forza_Horizon_5/`, and the
-comparison fills in.
+`https://store.steampowered.com/app/1245620/ELDEN_RING/`, and the comparison
+fills in automatically.
 
 ### Scripts
 
@@ -118,33 +119,37 @@ app/
     tf2-key/            # Lowest/median Mann Co. Supply Crate Key price
     search/             # Steam store search (autocomplete)
     exchange-rate/      # Live VND/USD rate (open.er-api.com)
-  layout.tsx            # Root layout, providers, animated background
+  layout.tsx            # Root layout, providers, fonts, i18n metadata
   page.tsx              # Renders <Calculator />
+  globals.css           # Design tokens, Tailwind layer utilities
 components/
   calculator.tsx        # Main UI + state orchestration
+  navbar.tsx            # Top nav — brand, VND/USD toggle, EN/VI toggle
   versions-card.tsx     # Edition / DLC / bundle-contents selector
-  locale-toggle.tsx     # EN / VI switch
-  ui/                   # shadcn/ui primitives + custom visual components
+  ui/                   # shadcn/ui primitives + WebGL background, backlight
 lib/
   steam.ts              # Steam API client, parsing, URL/id extraction
   calc.ts               # Pricing math + currency/date formatting
+  currency-context.tsx  # VND ⇄ USD toggle context
   history.ts            # localStorage-backed recent-search history
+hooks/
+  use-gsap-intro.ts     # GSAP entrance animation
 i18n/                   # next-intl config, request handler, locale action
 messages/               # en.json, vi.json translations
 ```
 
 ## API routes
 
-All server logic lives in Next.js API routes, which proxy and normalize public
+All server logic lives in Next.js API routes, which proxy and normalise public
 Steam endpoints (avoiding browser CORS issues) and add short cache windows.
 
-| Route                     | Source                                   | Cache       |
-| ------------------------- | ---------------------------------------- | ----------- |
-| `GET /api/game/[appid]`   | Steam `store/api/appdetails` (VN + US)   | 300s        |
-| `GET /api/bundle/[id]`    | Steam `actions/ajaxresolvebundles`       | 300s        |
-| `GET /api/tf2-key`        | Steam `market/priceoverview` (appid 440) | 120s        |
-| `GET /api/search?q=`      | Steam `api/storesearch`                  | 60s         |
-| `GET /api/exchange-rate`  | `open.er-api.com` (USD base)             | 3600s       |
+| Route                     | Source                                   | Cache  |
+| ------------------------- | ---------------------------------------- | ------ |
+| `GET /api/game/[appid]`   | Steam `store/api/appdetails` (VN + US)   | 300 s  |
+| `GET /api/bundle/[id]`    | Steam `actions/ajaxresolvebundles`       | 300 s  |
+| `GET /api/tf2-key`        | Steam `market/priceoverview` (appid 440) | 120 s  |
+| `GET /api/search?q=`      | Steam `api/storesearch`                  | 60 s   |
+| `GET /api/exchange-rate`  | `open.er-api.com` (USD base)             | 3600 s |
 
 > This project relies on undocumented public Steam Store/Community endpoints.
 > They can change or rate-limit without notice. Prices are estimates — always
@@ -157,5 +162,7 @@ Steam endpoints (avoiding browser CORS issues) and add short cache windows.
 - "Complete the set" bundles depend on what you already own and require a
   logged-in session, so the app surfaces a clear message instead of a misleading
   figure.
+- Banner images use `capsule_616x353.jpg` when available, falling back to
+  `header.jpg` for DLC, soundtracks, and other items that don't have the larger
+  variant.
 - This is primarily a personal-use tool, but it's built to production quality.
-</content>
