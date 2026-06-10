@@ -3,6 +3,17 @@
     "title": "Máy tính giá Steam",
     "subtitle": "Dán URL cửa hàng Steam hoặc app id. Ứng dụng so sánh chi phí mua game qua dịch vụ gift với cách bán chìa khóa TF2 trên Steam Market để nạp ví."
   },
+  "hero": {
+    "eyebrow": "So sánh giá theo thời gian thực",
+    "h1Plain": "Mua game Steam",
+    "h1Accent": "smarter",
+    "h1Tail": ", không trả thừa một đồng.",
+    "lede": "Dán URL cửa hàng Steam hoặc app id — công cụ so sánh chi phí mua qua dịch vụ gift với cách bán chìa khóa TF2 trên Steam Market để nạp ví, rồi chỉ ra đường rẻ nhất.",
+    "tryLabel": "Thử nhanh:"
+  },
+  "navbar": {
+    "sub": "steamgift.neozzz.dev"
+  },
   "language": {
     "label": "Ngôn ngữ",
     "en": "EN",
@@ -36,7 +47,7 @@
       "previewHeading": "Từ URL"
     },
     "summary": {
-      "title": "2. Thông tin game",
+      "title": "Thông tin game",
       "description": "Giá Steam khu vực Việt Nam.",
       "empty": "Dán URL Steam ở trên để bắt đầu.",
       "loading": "Đang lấy dữ liệu từ Steam…",
@@ -48,7 +59,8 @@
       "released": "Phát hành {date}"
     },
     "key": {
-      "title": "3. Chìa khóa TF2 (Steam Market)",
+      "title": "Chìa khóa TF2 — Steam Market",
+      "viewOnMarket": "Xem trên Steam Market",
       "description": "Giá thị trường của \"Mann Co. Supply Crate Key\".",
       "refresh": "Cập nhật giá chìa khóa",
       "loading": "Đang lấy giá chìa khóa…",
@@ -57,7 +69,7 @@
       "volume": "Khối lượng {value}"
     },
     "versions": {
-      "title": "4. Phiên bản / Nội dung",
+      "title": "Phiên bản / Nội dung",
       "description": "Với game: chọn một hoặc nhiều phiên bản hay DLC — giá sẽ tự cộng dồn. Với bundle: danh sách các mục đi kèm hiển thị để tham khảo.",
       "placeholder": "Chọn phiên bản hoặc DLC",
       "base": "Bản gốc",
@@ -74,7 +86,7 @@
       "bundleContentsHeading": "Đi kèm trong bundle"
     },
     "params": {
-      "title": "5. Thông số",
+      "title": "Thông số",
       "description": "Điều chỉnh phí marketplace, giá tiền mặt mỗi chìa khóa, và tỉ lệ dịch vụ gift.",
       "feeLabel": "Phí marketplace (%)",
       "feeHint": "Mặc định 13. Steam thường thu 13–20% với chìa khóa TF2.",
@@ -86,7 +98,7 @@
       "usdRateHint": "Chỉ dùng khi bật chế độ USD."
     },
     "comparison": {
-      "title": "6. So sánh",
+      "title": "So sánh",
       "subtitle": "Giá game trên Steam VN: <b>{value}</b>",
       "cheapest": "Rẻ nhất",
       "tie": "Hai cách có chi phí bằng nhau.",

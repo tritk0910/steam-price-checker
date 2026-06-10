@@ -46,6 +46,7 @@ export type GamePriceResult = {
   discountPercentUsd: number;
   formatted: string | null;
   releaseDate: string | null;
+  genres: string[];
   editions: Edition[];
   dlcAppIds: number[];
   bundleAppIds: number[];
@@ -94,7 +95,10 @@ type RegionData = {
   discountPercent: number;
   formatted: string | null;
   currency: string;
-  editions: Map<number, { priceFinal: number | null; originalPriceFinal: number | null; discountPercent: number }>;
+  editions: Map<
+    number,
+    { priceFinal: number | null; originalPriceFinal: number | null; discountPercent: number }
+  >;
 };
 
 async function fetchAppdetails(appid: number, cc: string): Promise<AppdetailsData | null> {
@@ -142,7 +146,10 @@ function parseRegionData(d: AppdetailsData): RegionData {
     }
   }
 
-  const editions = new Map<number, { priceFinal: number | null; originalPriceFinal: number | null; discountPercent: number }>();
+  const editions = new Map<
+    number,
+    { priceFinal: number | null; originalPriceFinal: number | null; discountPercent: number }
+  >();
   for (const s of subs) {
     if (typeof s?.packageid !== "number" || editions.has(s.packageid)) continue;
     const priceFinal =
@@ -220,7 +227,9 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
     kind: "app",
     appid,
     name: gameName,
-    imageUrl: vnData.header_image ?? null,
+    imageUrl: vnData.header_image
+      ? vnData.header_image.replace(/\/header\.jpg(\?.*)?$/, "/capsule_616x353.jpg")
+      : null,
     isFree: Boolean(vnData.is_free),
     currency: vn.currency || "VND",
     priceVnd: vn.final,
@@ -231,6 +240,7 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
     discountPercentUsd: us?.discountPercent ?? 0,
     formatted: vn.formatted,
     releaseDate: vnData.release_date?.date ?? null,
+    genres: (vnData.genres ?? []).map((g) => g.description).filter((d): d is string => Boolean(d)),
     editions,
     dlcAppIds,
     bundleAppIds: [],
@@ -328,9 +338,7 @@ export async function fetchBundlePrice(bundleId: number): Promise<GamePriceResul
   const bundleAppIds: number[] = Array.isArray(vnData.appids)
     ? Array.from(
         new Set(
-          vnData.appids.filter(
-            (id: unknown): id is number => typeof id === "number" && id > 0,
-          ),
+          vnData.appids.filter((id: unknown): id is number => typeof id === "number" && id > 0),
         ),
       )
     : [];
@@ -350,6 +358,7 @@ export async function fetchBundlePrice(bundleId: number): Promise<GamePriceResul
     discountPercentUsd: us?.discountPercent ?? 0,
     formatted: vn.formatted,
     releaseDate: null,
+    genres: [],
     editions: [],
     dlcAppIds: [],
     bundleAppIds,
@@ -368,6 +377,7 @@ type AppdetailsData = {
     currency?: string;
   };
   release_date?: { date?: string };
+  genres?: Array<{ id?: string; description?: string }>;
   dlc?: unknown[];
   package_groups?: Array<{ subs?: PackageSub[] }>;
 };
@@ -378,7 +388,10 @@ function cleanEditionName(optionText: string, gameName: string): string {
   // e.g. "DMC5 + Vergil - <span class=\"discount_original_price\">620.000₫</span> 93.000₫".
   // Strip tags first, then strip ALL trailing price segments, then the leading
   // game-name prefix.
-  let name = optionText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  let name = optionText
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   // Repeatedly drop a trailing price (number with separators + optional ₫).
   // Allows both "... 93.000₫" and "... - 93.000₫".
   for (let i = 0; i < 3; i++) {

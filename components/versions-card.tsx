@@ -6,13 +6,7 @@ import { useTranslations } from "next-intl";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
@@ -56,6 +50,7 @@ export function VersionsCard({
   onModeChange,
   format,
   className,
+  noCard,
 }: {
   rootGame: GamePriceResult | null;
   selectedKeys: string[];
@@ -64,6 +59,7 @@ export function VersionsCard({
   onModeChange: (next: SelectionMode) => void;
   format: (vnd: number | null | undefined, usd: number | null | undefined) => string;
   className?: string;
+  noCard?: boolean;
 }) {
   const t = useTranslations("steps.versions");
   const [open, setOpen] = useState(false);
@@ -136,22 +132,17 @@ export function VersionsCard({
     return rootGame.name;
   })();
 
-  return (
-    <Card className={cn(className)}>
-      <CardHeader>
-        <CardTitle className="text-base">{t("title")}</CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {!hasGame ? (
-          <p className="text-xs text-muted-foreground">{t("idle")}</p>
-        ) : hasAlternatives ? (
-          <div className="flex flex-col gap-3">
+  const inner = (
+    <>
+      {!hasGame ? (
+        <p className="text-muted-foreground text-xs">{t("idle")}</p>
+      ) : hasAlternatives ? (
+        <div className="flex flex-col gap-3">
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors hover:bg-accent/40 focus:outline-none focus:ring-2 focus:ring-ring"
+                className="border-input hover:bg-accent/40 focus:ring-ring flex h-9 w-full items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus:ring-2 focus:outline-none"
                 aria-haspopup="listbox"
                 aria-expanded={open}
               >
@@ -229,10 +220,10 @@ export function VersionsCard({
             </PopoverContent>
           </Popover>
           {isBundle ? null : (
-            <label className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <label className="text-muted-foreground flex items-center justify-between gap-3 text-xs">
               <span>{t("modeLabel")}</span>
               <span className="flex items-center gap-2">
-                <span className={cn(mode === "single" && "font-semibold text-foreground")}>
+                <span className={cn(mode === "single" && "text-foreground font-semibold")}>
                   {t("modeSingle")}
                 </span>
                 <Switch
@@ -240,17 +231,30 @@ export function VersionsCard({
                   onCheckedChange={(v) => onModeChange(v ? "multi" : "single")}
                   aria-label={t("modeLabel")}
                 />
-                <span className={cn(mode === "multi" && "font-semibold text-foreground")}>
+                <span className={cn(mode === "multi" && "text-foreground font-semibold")}>
                   {t("modeMulti")}
                 </span>
               </span>
             </label>
           )}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">{t("noAlternatives")}</p>
-        )}
-      </CardContent>
+        </div>
+      ) : (
+        <p className="text-muted-foreground text-xs">{t("noAlternatives")}</p>
+      )}
+    </>
+  );
+
+  if (noCard) {
+    return <div className={cn("mt-4", className)}>{inner}</div>;
+  }
+
+  return (
+    <Card className={cn(className)}>
+      <CardHeader>
+        <CardTitle className="text-base">{t("title")}</CardTitle>
+        <CardDescription>{t("description")}</CardDescription>
+      </CardHeader>
+      <CardContent>{inner}</CardContent>
     </Card>
   );
 }
@@ -279,7 +283,7 @@ function OptionRow({
     <Wrapper
       className={cn(
         "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors",
-        showCheckbox && "cursor-pointer hover:bg-accent hover:text-accent-foreground",
+        showCheckbox && "hover:bg-accent hover:text-accent-foreground cursor-pointer",
       )}
     >
       {showCheckbox ? <Checkbox checked={checked} onCheckedChange={onToggle} /> : null}

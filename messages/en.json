@@ -3,6 +3,17 @@
     "title": "Steam Price Calculator",
     "subtitle": "Paste a Steam store URL or app id. We compare buying the game via a gifting service against acquiring Steam Wallet by selling TF2 keys on the Steam Market."
   },
+  "hero": {
+    "eyebrow": "Real-time price comparison",
+    "h1Plain": "Buy Steam games",
+    "h1Accent": "smarter",
+    "h1Tail": ", never overpay again.",
+    "lede": "Paste a Steam store URL or app id — compare buying via a gifting service against selling TF2 keys on the Steam Market to top up your wallet, and find the cheapest route.",
+    "tryLabel": "Try:"
+  },
+  "navbar": {
+    "sub": "steamgift.neozzz.dev"
+  },
   "language": {
     "label": "Language",
     "en": "EN",
@@ -36,7 +47,7 @@
       "previewHeading": "From URL"
     },
     "summary": {
-      "title": "2. Game",
+      "title": "Game info",
       "description": "Steam Vietnam region price.",
       "empty": "Paste a Steam URL above to begin.",
       "loading": "Fetching from Steam…",
@@ -48,7 +59,8 @@
       "released": "Released {date}"
     },
     "key": {
-      "title": "3. TF2 key (Steam Market)",
+      "title": "TF2 Key — Steam Market",
+      "viewOnMarket": "View on Steam Market",
       "description": "Live price for \"Mann Co. Supply Crate Key\".",
       "refresh": "Refresh key price",
       "loading": "Fetching key price…",
@@ -57,7 +69,7 @@
       "volume": "Vol {value}"
     },
     "versions": {
-      "title": "4. Editions / Contents",
+      "title": "Editions / Contents",
       "description": "For games: pick one or more editions or DLC — prices add up. For bundles: the items included are shown for reference.",
       "placeholder": "Select editions or DLC",
       "base": "Base",
@@ -74,7 +86,7 @@
       "bundleContentsHeading": "Included in this bundle"
     },
     "params": {
-      "title": "5. Parameters",
+      "title": "Parameters",
       "description": "Tweak the marketplace fee, the cash price you pay per key, and the gifting-service rate.",
       "feeLabel": "Marketplace fee (%)",
       "feeHint": "Default 13. Steam typically takes 13–20% on TF2 keys.",
@@ -86,7 +98,7 @@
       "usdRateHint": "Only used when the USD toggle is on."
     },
     "comparison": {
-      "title": "6. Comparison",
+      "title": "Comparison",
       "subtitle": "Game price on Steam VN: <b>{value}</b>",
       "cheapest": "Cheapest",
       "tie": "Both routes cost the same.",

@@ -1,16 +1,34 @@
 import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
-import { getLocale, getMessages } from "next-intl/server";
+import { getLocale, getMessages, getTranslations } from "next-intl/server";
+import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 
-import { AnimatedGridPattern } from "@/components/ui/animated-grid-pattern";
+import { Navbar } from "@/components/navbar";
+import { WebGLBackground } from "@/components/ui/webgl-background";
 import { Providers } from "./providers";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "Steam Price Calculator",
-  description:
-    "Compare the cheapest way to buy a Steam game in Vietnam — gifting service vs. selling TF2 keys on the Steam Market.",
-};
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin", "vietnamese"],
+  weight: ["500", "600", "700"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "700"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("header");
+  return {
+    title: t("title"),
+    description: t("subtitle"),
+  };
+}
 
 export default async function RootLayout({
   children,
@@ -21,17 +39,18 @@ export default async function RootLayout({
   const messages = await getMessages();
 
   return (
-    <html lang={locale} className="h-full antialiased" suppressHydrationWarning>
-      <body className="relative flex min-h-full flex-col">
-        <AnimatedGridPattern
-          numSquares={30}
-          maxOpacity={0.15}
-          duration={3}
-          repeatDelay={1}
-          className="fixed inset-0 -z-10 h-screen w-screen skew-y-12 mask-[radial-gradient(ellipse_at_center,white,transparent_75%)]"
-        />
+    <html
+      lang={locale}
+      className={`h-full ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="relative min-h-full bg-surface">
+        <WebGLBackground />
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <Providers>{children}</Providers>
+          <Providers>
+            <Navbar />
+            {children}
+          </Providers>
         </NextIntlClientProvider>
       </body>
     </html>

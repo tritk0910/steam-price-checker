@@ -7,15 +7,9 @@ import axios from "axios";
 import { useLocale, useTranslations } from "next-intl";
 import { ArrowRight, ExternalLink, Loader2, RefreshCw, Search, X } from "lucide-react";
 
-import { LocaleToggle } from "@/components/locale-toggle";
-import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { VersionsCard, type SelectedItem } from "@/components/versions-card";
 import { calculate, formatReleaseDate, formatUsd, formatUsdNative, formatVnd } from "@/lib/calc";
+import { useCurrency } from "@/lib/currency-context";
 import { useSearchHistory, type HistoryEntry } from "@/lib/history";
 import {
   extractSteamItem,
@@ -25,13 +19,10 @@ import {
   type SteamItemRef,
 } from "@/lib/steam";
 import { cn } from "@/lib/utils";
-import { Backlight } from "./ui/backlight";
+import { useGsapIntro } from "@/hooks/use-gsap-intro";
 
-// Steam's effective fee on TF2 keys ≈ 13% in VN region (list 65k → wallet ~56.5k).
 const DEFAULT_FEE = 13;
 const DEFAULT_GIFT_RATE = 0.8;
-// Typical VN trader rate per TF2 key in cash. Tracks the Steam Market price
-// roughly but the user can adjust as it fluctuates.
 const DEFAULT_KEY_BUY_PRICE = 46_000;
 const DEFAULT_VND_PER_USD = 25_500;
 
@@ -58,7 +49,6 @@ async function fetchItem(ref: SteamItemRef): Promise<GamePriceResult> {
   }
 }
 
-// DLC always resolves as an app — convenience wrapper for the per-DLC queries.
 async function fetchGame(appid: number): Promise<GamePriceResult> {
   return fetchItem({ kind: "app", id: appid });
 }
@@ -95,10 +85,11 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 
 export function Calculator() {
   const t = useTranslations();
+  const locale = useLocale();
+  useGsapIntro(locale);
+
   const [urlInput, setUrlInput] = useState("");
   const [rootItem, setRootItem] = useState<SteamItemRef | null>(null);
-  // Multi-select: each entry is "pkg-{packageid}" or "dlc-{appid}". Order
-  // matters for display (first selected drives the highlight).
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState<"single" | "multi">("single");
 
@@ -106,14 +97,15 @@ export function Calculator() {
   const [keyBuyPrice, setKeyBuyPrice] = useState<string>(String(DEFAULT_KEY_BUY_PRICE));
   const [giftRate, setGiftRate] = useState<string>(String(DEFAULT_GIFT_RATE));
 
-  const [showUsd, setShowUsd] = useState(false);
+  const { showUsd } = useCurrency();
   const [vndPerUsd, setVndPerUsd] = useState<string>(String(DEFAULT_VND_PER_USD));
   const userTouchedRateRef = useRef(false);
 
+  // URL bar focus state for the focus-ring effect
+  const [urlFocused, setUrlFocused] = useState(false);
+
   const { history, addEntry: addToHistory, removeEntry: removeFromHistory } = useSearchHistory();
 
-  // Pull the live VND/USD rate once on mount and seed the input unless the
-  // user has already typed their own value.
   const rateQuery = useQuery({
     queryKey: ["exchange-rate"],
     queryFn: fetchExchangeRate,
@@ -127,7 +119,6 @@ export function Calculator() {
 
   const parsedItemFromInput = extractSteamItem(urlInput);
 
-  // When the user types a non-URL/id, treat as a Steam search query.
   const [searchOpen, setSearchOpen] = useState(false);
   const debouncedQuery = useDebouncedValue(urlInput, 300);
   const hasSearchTerm = debouncedQuery.trim().length >= 2;
@@ -139,8 +130,6 @@ export function Calculator() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // When the input is a URL/appid, fetch a preview so the dropdown can show a
-  // single confirmation row before the user submits.
   const previewQuery = useQuery({
     queryKey: ["item", parsedItemFromInput?.kind, parsedItemFromInput?.id],
     queryFn: () => fetchItem(parsedItemFromInput!),
@@ -149,7 +138,6 @@ export function Calculator() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // The popover shows: search results, URL preview, or recent history.
   const showPopover =
     searchOpen && (parsedItemFromInput != null || hasSearchTerm || history.length > 0);
 
@@ -159,10 +147,6 @@ export function Calculator() {
     enabled: rootItem != null,
   });
 
-  // Push the root game into history once its details arrive — works for both
-  // URL submits and search-picked games. Bundles are skipped because the
-  // history popover assumes everything in it is an app (its onPick rebuilds
-  // an /app/{id}/ URL).
   const loadedAppId = rootGameQuery.data?.appid ?? null;
   const loadedKind = rootGameQuery.data?.kind ?? null;
   const loadedName = rootGameQuery.data?.name;
@@ -172,8 +156,6 @@ export function Calculator() {
     addToHistory({ appid: loadedAppId, name: loadedName, image: loadedImage ?? null });
   }, [loadedAppId, loadedKind, loadedName, loadedImage, addToHistory]);
 
-  // Auto-pre-select the base edition whenever a fresh root game finishes
-  // loading, so the user starts with a meaningful price in the comparison.
   const firstEditionKey = rootGameQuery.data?.editions[0]?.packageid;
   useEffect(() => {
     if (firstEditionKey != null) {
@@ -182,7 +164,6 @@ export function Calculator() {
     }
   }, [firstEditionKey]);
 
-  // Fetch DLC details for each currently-selected DLC so we can sum prices.
   const selectedDlcAppIds = selectedKeys
     .filter((k) => k.startsWith("dlc-"))
     .map((k) => Number(k.slice(4)))
@@ -200,9 +181,6 @@ export function Calculator() {
     queryFn: fetchKey,
   });
 
-  // Resolve each selected key into a SelectedItem with name + pricing. Items
-  // whose data is still loading or missing are kept as null and excluded from
-  // totals.
   const selectedItems: SelectedItem[] = selectedKeys
     .map((key): SelectedItem | null => {
       if (key.startsWith("pkg-")) {
@@ -212,7 +190,6 @@ export function Calculator() {
         return {
           key,
           kind: "package",
-          // Packages share the root app's store page + release date.
           appid: rootGameQuery.data.appid,
           name: edition.name,
           imageUrl: rootGameQuery.data.imageUrl ?? null,
@@ -249,8 +226,6 @@ export function Calculator() {
     })
     .filter((x): x is SelectedItem => x != null);
 
-  // Bundles are atomic — the bundle's own price drives the comparison, not a
-  // sum of its contents (you can't unbundle).
   const isBundle = rootGameQuery.data?.kind === "bundle";
   const totalVnd = isBundle
     ? (rootGameQuery.data?.priceVnd ?? null)
@@ -261,9 +236,6 @@ export function Calculator() {
       ? selectedItems.reduce((sum, i) => sum + (i.priceUsd ?? 0), 0)
       : null;
 
-  // Single-selection: use that item's own banner + name (so the Game card
-  // matches what's shown in the Versions dropdown trigger).
-  // Multi-selection (or empty): fall back to the root game's banner + name.
   const rootName = rootGameQuery.data?.name ?? "";
   const displayedImageUrl =
     selectedItems.length === 1
@@ -272,9 +244,6 @@ export function Calculator() {
   const displayedName =
     selectedItems.length === 1 ? labelForSelectedItem(selectedItems[0], rootName) : rootName;
 
-  // For single-selection: route appid + release date through that item so the
-  // Steam link points to its page (DLC → DLC page) and the displayed release
-  // date matches Steam's actual page. Editions (packages) keep root values.
   const singleSelected = selectedItems.length === 1 ? selectedItems[0] : null;
 
   const displayedGame: GamePriceResult | null = rootGameQuery.data
@@ -285,8 +254,6 @@ export function Calculator() {
         imageUrl: displayedImageUrl,
         releaseDate: singleSelected?.releaseDate ?? rootGameQuery.data.releaseDate,
         priceVnd: totalVnd,
-        // Bundles surface their headline discount (the whole point of buying
-        // one). Apps/multi-selection don't have a meaningful aggregate discount.
         initialPriceVnd: isBundle ? rootGameQuery.data.initialPriceVnd : null,
         discountPercent: isBundle ? rootGameQuery.data.discountPercent : 0,
         priceUsd: totalUsd,
@@ -324,8 +291,6 @@ export function Calculator() {
 
   const loadItem = (ref: SteamItemRef, urlIfKnown?: string) => {
     setRootItem(ref);
-    // Clear selection; auto-select effect re-picks the base edition when the
-    // new root data arrives (bundles have no editions, so it stays empty).
     setSelectedKeys([]);
     const fallback =
       ref.kind === "bundle"
@@ -335,9 +300,6 @@ export function Calculator() {
     setSearchOpen(false);
   };
 
-  // Switching modes:
-  //   single → multi  : keep current selection (already ≤1 item).
-  //   multi  → single : if >1 selected, reset to just the base edition.
   const onSelectionModeChange = (mode: "single" | "multi") => {
     setSelectionMode(mode);
     if (mode === "single" && selectedKeys.length > 1) {
@@ -354,66 +316,78 @@ export function Calculator() {
   const fmt = (v: number | null | undefined) =>
     showUsd ? formatUsd(v ?? null, usdRate) : formatVnd(v ?? null);
 
-  // Format a price pair where the USD amount is already known natively from
-  // Steam (game prices, edition prices). Avoids the VND→USD conversion that
-  // `fmt` would otherwise do.
   const fmtPair = (vnd: number | null | undefined, usd: number | null | undefined) => {
     if (showUsd) {
-      // Prefer the native USD value; fall back to converting from VND.
       return usd != null ? formatUsdNative(usd) : formatUsd(vnd ?? null, usdRate);
     }
     return formatVnd(vnd ?? null);
   };
 
-  return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-10 sm:py-16">
-      <header className="flex flex-col gap-3">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/logo.png"
-              alt=""
-              width={150}
-              height={150}
-              loading="eager"
-              className="text-foreground"
-            />
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              {t("header.title")}
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <AnimatedThemeToggler
-              variant="circle"
-              className="text-muted-foreground hover:bg-accent hover:text-accent-foreground inline-flex size-9 items-center justify-center rounded-md transition-colors [&_svg]:size-4"
-            />
-            <LocaleToggle />
-          </div>
-        </div>
-        <p className="text-muted-foreground text-sm">{t("header.subtitle")}</p>
-      </header>
+  const quickLinks = [
+    { label: "Forza Horizon 5", appid: 1551360 },
+    { label: "Elden Ring", appid: 1245620 },
+    { label: "Black Myth: Wukong", appid: 2358720 },
+  ];
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("steps.game.title")}</CardTitle>
-          <CardDescription>{t("steps.game.hint")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit} className="flex flex-col gap-3 sm:flex-row">
-            <div className="relative flex-1">
-              <Input
+  return (
+    <div className="relative z-1 mx-auto max-w-285 px-8 pt-21.5 max-sm:px-4.5">
+      {/* ── HERO ── */}
+      <header className="relative z-10 max-w-190 pt-13.5 pb-7.5 max-sm:pt-14">
+        <div
+          data-eyebrow
+          className="font-code mb-5.5 inline-flex items-center gap-2 rounded-full border border-hi-border bg-hi-bg px-3.5 py-1.5 text-[11.5px] text-hi-text-strong tracking-[0.14em] uppercase"
+        >
+          <span
+            className="bg-hi h-1.5 w-1.5 shrink-0 rounded-full shadow-glow"
+          />
+          <span>{t("hero.eyebrow")}</span>
+        </div>
+
+        <h1
+          data-gsap-h1
+          className="font-heading text-ink text-[clamp(38px,5.2vw,58px)] leading-[1.06] font-bold tracking-tight text-balance"
+        >
+          {t("hero.h1Plain")}{" "}
+          <em
+            className="bg-clip-text text-gradient-hi text-transparent not-italic"
+          >
+            {t("hero.h1Accent")}
+          </em>
+          {t("hero.h1Tail")}
+        </h1>
+
+        <p data-lede className="text-ink-2 mt-4.5 max-w-[56ch] text-[16.5px] text-pretty">
+          {t("hero.lede")}
+        </p>
+
+        <form onSubmit={onSubmit}>
+          <div
+            data-urlbar
+            className={cn(
+              "bg-card-glass mt-8.5 flex gap-2.5 rounded-[18px] border p-2.5 backdrop-blur-[18px] transition-[border-color,box-shadow] duration-200 max-sm:flex-col",
+              urlFocused
+                ? "border-[color-mix(in_oklab,var(--accent-hex)_55%,transparent)] shadow-search-focus"
+                : "border-line shadow-search",
+            )}
+          >
+            <div className="relative flex flex-1 items-center">
+              <input
                 value={urlInput}
                 onChange={(e) => {
                   setUrlInput(e.target.value);
                   setSearchOpen(true);
                 }}
-                onFocus={() => setSearchOpen(true)}
+                onFocus={() => {
+                  setSearchOpen(true);
+                  setUrlFocused(true);
+                }}
                 onBlur={() => {
-                  // Defer so a click on a result can register before we close.
                   setTimeout(() => setSearchOpen(false), 150);
+                  setUrlFocused(false);
                 }}
                 placeholder={t("steps.game.placeholder")}
-                className={cn("font-mono", urlInput && "pr-8")}
+                spellCheck={false}
+                className="text-ink font-code placeholder:text-ink-3 min-w-0 flex-1 appearance-none border-none bg-transparent px-3 text-[13.5px] outline-none max-sm:py-3"
               />
               {urlInput ? (
                 <button
@@ -424,9 +398,9 @@ export function Calculator() {
                     setSearchOpen(true);
                   }}
                   aria-label={t("steps.game.clear")}
-                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 transition-colors"
+                  className="text-ink-3 absolute right-2 flex cursor-pointer items-center border-none bg-transparent p-1"
                 >
-                  <X className="size-4" />
+                  <X size={14} />
                 </button>
               ) : null}
               {showPopover ? (
@@ -442,218 +416,422 @@ export function Calculator() {
                 />
               ) : null}
             </div>
-            <Button type="submit" disabled={!parsedItemFromInput}>
+            <button
+              type="submit"
+              disabled={!parsedItemFromInput}
+              className="btn-primary inline-flex h-11.5 shrink-0 cursor-pointer items-center gap-2 rounded-[12px] border-none px-6 font-sans text-[14px] font-semibold whitespace-nowrap text-[#061018] transition-[transform,filter] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 max-sm:h-11 max-sm:justify-center"
+            >
               {rootGameQuery.isFetching ? (
-                <Loader2 className="animate-spin" />
+                <Loader2 size={15} className="animate-[spin_0.7s_linear_infinite]" />
               ) : (
-                <ArrowRight aria-hidden />
+                <ArrowRight size={15} aria-hidden />
               )}
               {t("steps.game.submit")}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            </button>
+          </div>
+        </form>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle className="text-base">{t("steps.summary.title")}</CardTitle>
-            <CardDescription>{t("steps.summary.description")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <GameSummary
-              query={displayedQuery}
-              displayed={displayedGame}
-              steamUrl={displayedSteamUrl}
-              hasSelection={selectedKeys.length > 0}
-              format={fmtPair}
-            />
-          </CardContent>
-        </Card>
+        <div
+          data-url-hint
+          className="text-ink-3 mt-3 flex flex-wrap items-center gap-3.5 text-[12.5px]"
+        >
+          <span>{t("hero.tryLabel")}</span>
+          {quickLinks.map(({ label, appid }) => (
+            <code
+              key={appid}
+              onClick={() => loadItem({ kind: "app", id: appid })}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === "Enter" && loadItem({ kind: "app", id: appid })}
+              className="font-code border-line-soft hover:border-hi hover:text-ink cursor-pointer rounded-[6px] border bg-white/5 px-1.75 py-0.5 text-[11.5px] transition-[border-color,color] duration-150"
+            >
+              {label}
+            </code>
+          ))}
+        </div>
+      </header>
 
-        <div className="flex min-w-0 flex-col gap-6 lg:h-full">
-          <Card className="lg:flex-1">
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <CardTitle className="text-base">{t("steps.key.title")}</CardTitle>
-                  <CardDescription>{t("steps.key.description")}</CardDescription>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  type="button"
-                  onClick={() => keyQuery.refetch()}
-                  disabled={keyQuery.isFetching}
-                  aria-label={t("steps.key.refresh")}
-                >
-                  {keyQuery.isFetching ? (
-                    <Loader2 className="animate-spin" />
-                  ) : (
-                    <RefreshCw aria-hidden />
-                  )}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <KeySummary query={keyQuery} format={fmt} />
-            </CardContent>
-          </Card>
+      {/* ── DASHBOARD GRID ── */}
+      <main
+        id="dash"
+        className="mt-6 grid grid-cols-[1.25fr_1fr] gap-4.5 max-[920px]:grid-cols-1 sm:mt-13.5"
+      >
+        {/* Card 01+02 — Game info + Editions */}
+        <section className="bg-card-glass border-line reveal relative row-span-2 flex flex-col rounded-[18px] border p-6 backdrop-blur-[18px] max-[920px]:row-auto">
+          <div data-card-head className="mb-1.5 flex items-center justify-between">
+            <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
+              <span
+                data-step-num
+                className="font-code grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-[10.5px] text-hi-text"
+              >
+                01
+              </span>
+              <span>{t("steps.summary.title")}</span>
+            </div>
+          </div>
+          <GameSummary
+            query={displayedQuery}
+            displayed={displayedGame}
+            steamUrl={displayedSteamUrl}
+            hasSelection={selectedKeys.length > 0}
+            format={fmtPair}
+          />
 
+          <div
+            data-card-head
+            className="mt-6.5 mb-1.5 flex items-center justify-between"
+          >
+            <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
+              <span
+                data-step-num
+                className="font-code grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-[10.5px] text-hi-text"
+              >
+                02
+              </span>
+              <span>{t("steps.versions.title")}</span>
+            </div>
+          </div>
+          <p data-card-sub className="text-ink-3 text-[12.5px]">
+            {t("steps.versions.description")}
+          </p>
           <VersionsCard
-            className="lg:flex-1"
             rootGame={rootGameQuery.data ?? null}
             selectedKeys={selectedKeys}
             onChange={setSelectedKeys}
             mode={selectionMode}
             onModeChange={onSelectionModeChange}
             format={fmtPair}
+            noCard
           />
-        </div>
-      </div>
+        </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("steps.params.title")}</CardTitle>
-          <CardDescription>{t("steps.params.description")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label={t("steps.params.feeLabel")} hint={t("steps.params.feeHint")}>
-              <Input
+        {/* Card 03 — TF2 Key */}
+        <section
+          className="bg-card-glass border-line reveal relative rounded-[18px] border p-6 backdrop-blur-[18px] [animation-delay:0.06s]"
+        >
+          <div data-card-head className="mb-1.5 flex items-center justify-between">
+            <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
+              <span
+                data-step-num
+                className="font-code grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-[10.5px] text-hi-text"
+              >
+                03
+              </span>
+              <span>{t("steps.key.title")}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => keyQuery.refetch()}
+              disabled={keyQuery.isFetching}
+              aria-label={t("steps.key.refresh")}
+              className="border-line text-ink-2 hover:text-ink hover:border-hi grid h-8 w-8 shrink-0 cursor-pointer appearance-none place-items-center rounded-[9px] border bg-white/5 transition-[color,border-color] duration-150 disabled:opacity-60"
+            >
+              {keyQuery.isFetching ? (
+                <Loader2 size={14} className="animate-[spin_0.7s_linear_infinite]" />
+              ) : (
+                <RefreshCw size={14} aria-hidden />
+              )}
+            </button>
+          </div>
+          <div data-card-sub className="text-ink-3 text-[12.5px]">
+            {t("steps.key.description")}
+          </div>
+          <KeySummary query={keyQuery} format={fmt} />
+        </section>
+
+        {/* Card 04 — Params */}
+        <section
+          className="bg-card-glass border-line reveal relative rounded-[18px] border p-6 backdrop-blur-[18px] [animation-delay:0.12s]"
+        >
+          <div data-card-head className="mb-1.5 flex items-center justify-between">
+            <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
+              <span
+                data-step-num
+                className="font-code grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-[10.5px] text-hi-text"
+              >
+                04
+              </span>
+              <span>{t("steps.params.title")}</span>
+            </div>
+          </div>
+          <div data-card-sub className="text-ink-3 text-[12.5px]">
+            {t("steps.params.description")}
+          </div>
+          <div className="mt-4.5 grid grid-cols-2 gap-3.5 max-sm:grid-cols-1">
+            <div>
+              <label
+                htmlFor="p-fee"
+                className="text-ink-2 mb-1.5 block text-[11.5px] tracking-[0.02em]"
+              >
+                {t("steps.params.feeLabel")}
+              </label>
+              <input
+                id="p-fee"
                 inputMode="decimal"
                 value={feePercent}
                 onChange={(e) => setFeePercent(e.target.value)}
+                className="border-line text-ink font-code w-full appearance-none rounded-[10px] border bg-black/30 px-3 py-2.25 text-[13.5px] transition-[border-color,box-shadow] duration-150 outline-none focus:border-[color-mix(in_oklab,var(--accent-hex)_60%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent-hex)_12%,transparent)]"
               />
-            </Field>
-            <Field label={t("steps.params.keyBuyLabel")} hint={t("steps.params.keyBuyHint")}>
-              <Input
+              <div className="text-ink-3 mt-1.25 text-[10.5px] leading-[1.4]">
+                {t("steps.params.feeHint")}
+              </div>
+            </div>
+            <div>
+              <label
+                htmlFor="p-key"
+                className="text-ink-2 mb-1.5 block text-[11.5px] tracking-[0.02em]"
+              >
+                {t("steps.params.keyBuyLabel")}
+              </label>
+              <input
+                id="p-key"
                 inputMode="numeric"
                 value={keyBuyPrice}
                 onChange={(e) => setKeyBuyPrice(e.target.value)}
                 placeholder={String(DEFAULT_KEY_BUY_PRICE)}
+                className="border-line text-ink font-code w-full appearance-none rounded-[10px] border bg-black/30 px-3 py-2.25 text-[13.5px] transition-[border-color,box-shadow] duration-150 outline-none focus:border-[color-mix(in_oklab,var(--accent-hex)_60%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent-hex)_12%,transparent)]"
               />
-            </Field>
-            <Field label={t("steps.params.giftRateLabel")} hint={t("steps.params.giftRateHint")}>
-              <Input
+              <div className="text-ink-3 mt-1.25 text-[10.5px] leading-[1.4]">
+                {t("steps.params.keyBuyHint")}
+              </div>
+            </div>
+            <div>
+              <label
+                htmlFor="p-ratio"
+                className="text-ink-2 mb-1.5 block text-[11.5px] tracking-[0.02em]"
+              >
+                {t("steps.params.giftRateLabel")}
+              </label>
+              <input
+                id="p-ratio"
                 inputMode="decimal"
                 value={giftRate}
                 onChange={(e) => setGiftRate(e.target.value)}
                 placeholder="0.80"
+                className="border-line text-ink font-code w-full appearance-none rounded-[10px] border bg-black/30 px-3 py-2.25 text-[13.5px] transition-[border-color,box-shadow] duration-150 outline-none focus:border-[color-mix(in_oklab,var(--accent-hex)_60%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent-hex)_12%,transparent)]"
               />
-            </Field>
-          </div>
-          <div className="mt-6 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end sm:justify-between">
-            <Field
-              label={t("steps.params.usdRateLabel")}
-              hint={t("steps.params.usdRateHint")}
-              className="sm:max-w-xs"
-            >
-              <Input
+              <div className="text-ink-3 mt-1.25 text-[10.5px] leading-[1.4]">
+                {t("steps.params.giftRateHint")}
+              </div>
+            </div>
+            <div>
+              <label
+                htmlFor="p-fx"
+                className="text-ink-2 mb-1.5 block text-[11.5px] tracking-[0.02em]"
+              >
+                {t("steps.params.usdRateLabel")}
+              </label>
+              <input
+                id="p-fx"
                 inputMode="numeric"
                 value={vndPerUsd}
                 onChange={(e) => {
                   userTouchedRateRef.current = true;
                   setVndPerUsd(e.target.value);
                 }}
+                className="border-line text-ink font-code w-full appearance-none rounded-[10px] border bg-black/30 px-3 py-2.25 text-[13.5px] transition-[border-color,box-shadow] duration-150 outline-none focus:border-[color-mix(in_oklab,var(--accent-hex)_60%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent-hex)_12%,transparent)]"
               />
-            </Field>
-            <label className="flex items-center gap-3 text-sm">
-              <span className="text-muted-foreground">{t("currency.label")}</span>
-              <span className={cn(!showUsd && "font-semibold")}>{t("currency.vnd")}</span>
-              <Switch checked={showUsd} onCheckedChange={setShowUsd} />
-              <span className={cn(showUsd && "font-semibold")}>{t("currency.usd")}</span>
-            </label>
-          </div>
-        </CardContent>
-      </Card>
-
-      {result && displayedGame?.priceVnd ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t("steps.comparison.title")}</CardTitle>
-            <CardDescription>
-              {t.rich("steps.comparison.subtitle", {
-                value: fmtPair(displayedGame.priceVnd, displayedGame.priceUsd),
-                b: (chunks) => <strong>{chunks}</strong>,
-              })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              <RouteCard
-                title={t("steps.routes.gift.title")}
-                cheapestLabel={t("steps.comparison.cheapest")}
-                cost={result.gift?.totalCostVnd ?? null}
-                highlight={result.cheapest === "gift"}
-                format={fmt}
-                details={
-                  result.gift
-                    ? [
-                        { label: t("steps.routes.gift.rate"), value: `× ${result.gift.rate}` },
-                        {
-                          label: t("steps.routes.gift.steamPrice"),
-                          value: fmtPair(displayedGame.priceVnd, displayedGame.priceUsd),
-                        },
-                        {
-                          label: t("steps.routes.gift.charges"),
-                          value: fmt(result.gift.totalCostVnd),
-                        },
-                      ]
-                    : [{ label: t("steps.routes.gift.rate"), value: t("steps.routes.gift.empty") }]
-                }
-              />
-              <RouteCard
-                title={t("steps.routes.tf.title")}
-                cheapestLabel={t("steps.comparison.cheapest")}
-                cost={result.tf.effectiveCostVnd}
-                highlight={result.cheapest === "tf"}
-                format={fmt}
-                details={[
-                  { label: t("steps.routes.tf.keysNeeded"), value: `${result.tf.keysNeeded}` },
-                  { label: t("steps.routes.tf.netPerKey"), value: fmt(result.tf.netPerKeyVnd) },
-                  { label: t("steps.routes.tf.cashPaid"), value: fmt(result.tf.cashPaidVnd) },
-                  {
-                    label: t("steps.routes.tf.walletAfter"),
-                    value: fmt(result.tf.walletAfterPurchaseVnd),
-                    bold: true,
-                  },
-                ]}
-              />
+              <div className="text-ink-3 mt-1.25 text-[10.5px] leading-[1.4]">
+                {t("steps.params.usdRateHint")}
+              </div>
             </div>
-            {result.gift && result.savingsVsDirectVnd != null ? (
-              <div className="bg-muted/40 mt-6 rounded-md border p-4 text-sm">
-                {(() => {
-                  const methodLabel =
-                    result.cheapest === "tf"
+          </div>
+        </section>
+
+        {/* Card 05 — Verdict (full width) */}
+        {result && displayedGame?.priceVnd ? (
+          <section
+            className="bg-card-glass border-line reveal col-span-full overflow-hidden rounded-[18px] border p-0 backdrop-blur-[18px] [animation-delay:0.18s]"
+          >
+            {/* verdict-inner */}
+            <div className="grid grid-cols-[1fr_auto_1fr] items-stretch max-[920px]:grid-cols-1">
+              {/* Gift route */}
+              <div
+                className={cn(
+                  "flex flex-col gap-1 p-[26px_28px] transition-[background] duration-250",
+                  result.cheapest === "gift" &&
+                    "bg-[linear-gradient(145deg,color-mix(in_oklab,var(--good)_9%,transparent),transparent_65%)]",
+                )}
+                id="route-gift"
+              >
+                {/* route-label */}
+                <div className="text-ink-2 font-code flex items-center gap-2 text-[12px] tracking-[0.08em] uppercase">
+                  <span>{t("steps.routes.gift.title")}</span>
+                  {result.cheapest === "gift" && (
+                    <span className="bg-good rounded-[5px] px-1.75 py-0.5 text-[10px] font-bold tracking-[0.06em] text-[#06140c]">
+                      {t("steps.comparison.cheapest")}
+                    </span>
+                  )}
+                </div>
+                {/* route-amount */}
+                <div
+                  className={cn(
+                    "font-code mt-2 text-[32px] font-bold tracking-[-0.02em]",
+                    result.cheapest === "gift" ? "text-good" : "text-ink",
+                  )}
+                >
+                  {result.gift?.totalCostVnd != null ? fmt(result.gift.totalCostVnd) : "—"}
+                </div>
+                {/* route-detail */}
+                {result.gift && (
+                  <div className="mt-3 flex flex-col gap-1.25">
+                    {(
+                      [
+                        [t("steps.routes.gift.rate"), `× ${result.gift.rate}`],
+                        [t("steps.routes.gift.steamPrice"), fmt(displayedGame.priceVnd)],
+                        [t("steps.routes.gift.charges"), fmt(result.gift.totalCostVnd)],
+                      ] as [string, string][]
+                    ).map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="text-ink-3 flex items-baseline justify-between gap-3 text-[12.5px]"
+                      >
+                        <span>{label}</span>
+                        <span className="font-code shrink-0">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* VS divider */}
+              <div className="relative grid place-items-center px-1.5 max-[920px]:px-0 max-[920px]:py-1.5">
+                <div className="bg-line absolute top-3.5 bottom-[calc(50%+26px)] left-1/2 w-px -translate-x-1/2 max-[920px]:hidden" />
+                <span className="font-heading text-ink-3 border-line bg-card-bg relative z-1 grid h-10.5 w-10.5 place-items-center rounded-full border text-[13px] font-bold">
+                  VS
+                </span>
+                <div className="bg-line absolute top-[calc(50%+26px)] bottom-3.5 left-1/2 w-px -translate-x-1/2 max-[920px]:hidden" />
+                <div className="bg-line absolute top-1/2 left-3.5 right-[calc(50%+30px)] hidden h-px -translate-y-1/2 max-[920px]:block" />
+                <div className="bg-line absolute top-1/2 left-[calc(50%+30px)] right-3.5 hidden h-px -translate-y-1/2 max-[920px]:block" />
+              </div>
+
+              {/* TF2 route */}
+              <div
+                className={cn(
+                  "flex flex-col gap-1 p-[26px_28px] transition-[background] duration-250",
+                  result.cheapest === "tf" &&
+                    "bg-[linear-gradient(215deg,color-mix(in_oklab,var(--good)_9%,transparent),transparent_65%)]",
+                )}
+                id="route-key"
+              >
+                {/* route-label */}
+                <div className="text-ink-2 font-code flex items-center gap-2 text-[12px] tracking-[0.08em] uppercase">
+                  <span>{t("steps.routes.tf.title")}</span>
+                  {result.cheapest === "tf" && (
+                    <span className="bg-good rounded-[5px] px-1.75 py-0.5 text-[10px] font-bold tracking-[0.06em] text-[#06140c]">
+                      {t("steps.comparison.cheapest")}
+                    </span>
+                  )}
+                </div>
+                {/* route-amount */}
+                <div
+                  className={cn(
+                    "font-code mt-2 text-[32px] font-bold tracking-[-0.02em]",
+                    result.cheapest === "tf" ? "text-good" : "text-ink",
+                  )}
+                >
+                  {fmt(result.tf.effectiveCostVnd)}
+                </div>
+                {/* route-detail */}
+                <div className="mt-3 flex flex-col gap-1.25">
+                  {(
+                    [
+                      [t("steps.routes.tf.keysNeeded"), String(result.tf.keysNeeded)],
+                      [t("steps.routes.tf.netPerKey"), fmt(result.tf.netPerKeyVnd)],
+                      [t("steps.routes.tf.cashPaid"), fmt(result.tf.cashPaidVnd)],
+                    ] as [string, string][]
+                  ).map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="text-ink-3 flex items-baseline justify-between gap-3 text-[12.5px]"
+                    >
+                      <span>{label}</span>
+                      <span className="font-code shrink-0">{value}</span>
+                    </div>
+                  ))}
+                  <div className="text-ink border-line-soft mt-1 flex items-baseline justify-between gap-3 border-t pt-1.5 text-[12.5px] font-bold">
+                    <span>{t("steps.routes.tf.walletAfter")}</span>
+                    <span className="font-code shrink-0">
+                      {fmt(result.tf.walletAfterPurchaseVnd)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* savings-bar */}
+            {result.gift && result.cheapest !== "tie"
+              ? (() => {
+                  const giftCost = result.gift.totalCostVnd ?? 0;
+                  const tfCost = result.tf.effectiveCostVnd;
+                  const winnerCost = result.cheapest === "gift" ? giftCost : tfCost;
+                  const loserCost = result.cheapest === "gift" ? tfCost : giftCost;
+                  const saving = loserCost - winnerCost;
+                  const pct = loserCost > 0 ? ((saving / loserCost) * 100).toFixed(1) : "0";
+                  const winnerLabel =
+                    result.cheapest === "gift"
+                      ? t("steps.comparison.giftMethod")
+                      : t("steps.comparison.tfMethod");
+                  const loserLabel =
+                    result.cheapest === "gift"
                       ? t("steps.comparison.tfMethod")
                       : t("steps.comparison.giftMethod");
-                  const key =
-                    result.savingsVsDirectVnd > 0
-                      ? "savingsVsDirect"
-                      : result.savingsVsDirectVnd < 0
-                        ? "loss"
-                        : "evenWithDirect";
                   return (
-                    <p>
-                      {t.rich(`steps.comparison.${key}`, {
-                        method: methodLabel,
-                        amount: fmt(Math.abs(result.savingsVsDirectVnd)),
-                        b: (chunks) => <strong>{chunks}</strong>,
-                      })}
-                    </p>
+                    <div className="border-line-soft flex flex-wrap items-center justify-between gap-4 border-t bg-black/18 px-7 py-4">
+                      <p className="text-ink-2 [&_strong]:text-good [&_strong]:font-code text-[13.5px]">
+                        {locale === "vi" ? (
+                          <>
+                            {winnerLabel} tiết kiệm{" "}
+                            <strong>
+                              {fmt(saving)} ({pct}%)
+                            </strong>{" "}
+                            so với {loserLabel}.
+                          </>
+                        ) : (
+                          <>
+                            {winnerLabel} saves{" "}
+                            <strong>
+                              {fmt(saving)} ({pct}%)
+                            </strong>{" "}
+                            vs {loserLabel}.
+                          </>
+                        )}
+                      </p>
+                    </div>
                   );
-                })()}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
+                })()
+              : null}
+          </section>
+        ) : null}
+      </main>
 
-      <footer className="text-muted-foreground mt-4 border-t pt-6 text-center text-xs">
-        {t("footer.copyright", { year: new Date().getFullYear() })}
+      <footer className="border-line-soft text-ink-3 mt-17.5 mb-10 flex flex-wrap items-center justify-between gap-2.5 border-t pt-6 text-[12.5px]">
+        <span>{t("footer.copyright", { year: new Date().getFullYear() })}</span>
+        <span className="font-code text-[11.5px]">
+          {locale === "vi"
+            ? "Giá tham khảo — không phải lời khuyên tài chính."
+            : "Reference prices — not financial advice."}
+        </span>
       </footer>
     </div>
+  );
+}
+
+function BannerImage({ src, alt }: { src: string; alt: string }) {
+  const [imgSrc, setImgSrc] = useState(src);
+  return (
+    <Image
+      src={imgSrc}
+      alt={alt}
+      width={616}
+      height={353}
+      sizes="(max-width: 768px) 100vw, 616px"
+      className="block h-auto w-full"
+      priority
+      onError={() =>
+        setImgSrc((s) => s.replace("/capsule_616x353.jpg", "/header.jpg"))
+      }
+    />
   );
 }
 
@@ -674,13 +852,30 @@ function GameSummary({
   const locale = useLocale();
 
   if (query.isPending && !query.data && !query.error) {
-    return <p className="text-muted-foreground text-sm">{t("steps.summary.empty")}</p>;
+    return (
+      <div className="space-y-4">
+        <div className="border-line-soft mt-4 min-h-35.75 w-full overflow-hidden rounded-[12px] border">
+          <div
+            className="text-ink-3 font-code bg-stripe flex h-full min-h-35.75 w-full items-center justify-center text-[11px] tracking-widest uppercase"
+          >
+            {locale === "vi" ? "ẢNH BÌA GAME — TỰ ĐỘNG TẢI" : "GAME COVER — AUTO LOADING"}
+          </div>
+        </div>
+        <p className="text-ink-3 mt-4 text-[13px]">{t("steps.summary.empty")}</p>
+      </div>
+    );
   }
   if (query.isFetching && !displayed) {
     return (
-      <p className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Loader2 className="size-4 animate-spin" /> {t("steps.summary.loading")}
-      </p>
+      <div className="space-y-4">
+        <div className="border-line-soft mt-4 aspect-460/215 overflow-hidden rounded-[12px] border">
+          <div
+            className="text-ink-3 font-code bg-stripe flex h-full w-full items-center justify-center gap-2.5 text-[11px] tracking-widest uppercase"
+          >
+            <Loader2 size={14} className="animate-[spin_0.7s_linear_infinite]" />
+          </div>
+        </div>
+      </div>
     );
   }
   if (query.error) {
@@ -690,53 +885,68 @@ function GameSummary({
         : query.error instanceof Error
           ? query.error.message
           : t("errors.loadFailed");
-    return <p className="text-destructive text-sm">{friendly}</p>;
+    return <p className="mt-4 text-[13px] text-[#f87171]">{friendly}</p>;
   }
   const g = displayed;
   if (!g) return null;
 
-  const banner = g.imageUrl ? (
-    <Backlight blur={10} className="w-full">
-      <div className="bg-muted relative aspect-460/215 w-full overflow-hidden rounded-md">
-        <Image
-          src={g.imageUrl}
-          alt={g.name}
-          fill
-          sizes="(max-width: 768px) 100vw, 600px"
-          className="object-cover"
-          priority
-        />
-      </div>
-    </Backlight>
-  ) : null;
-
-  const titleRow = (
-    <div className="flex items-center justify-between gap-2">
-      <strong className="min-w-0 flex-1 truncate">{g.name}</strong>
-      {steamUrl ? (
-        <a
-          href={steamUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-muted-foreground inline-flex shrink-0 items-center gap-1 text-xs hover:underline"
+  const coverLabel = locale === "vi" ? "ẢNH BÌA GAME — TỰ ĐỘNG TẢI" : "GAME COVER — AUTO LOADING";
+  const banner = (
+    <div className="border-line-soft mt-4 w-full overflow-hidden rounded-[12px] border">
+      {g.imageUrl ? (
+        <BannerImage key={g.imageUrl} src={g.imageUrl} alt={g.name} />
+      ) : (
+        <div
+          className="text-ink-3 font-code bg-stripe flex min-h-35.75 w-full items-center justify-center gap-2.5 text-[11px] tracking-widest uppercase"
         >
-          {t("steps.summary.openInSteam")} <ExternalLink className="size-3" />
-        </a>
-      ) : null}
+          {coverLabel}
+        </div>
+      )}
     </div>
   );
 
-  // Order matters: a positive price wins over everything — covers the case
-  // where a free root game (e.g. CS2) has a paid DLC selected (Prime Status
-  // Upgrade), so we show the DLC's price rather than the free-to-play hint.
+  const titleRow = (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <strong className="font-heading text-ink line-clamp-2 min-w-0 text-[22px] font-bold tracking-[-0.01em]">
+          {g.name}
+        </strong>
+        {steamUrl ? (
+          <a
+            href={steamUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-ink-3 hover:text-ink inline-flex shrink-0 items-center gap-1 text-[12px] transition-colors duration-150"
+          >
+            {t("steps.summary.openInSteam")} <ExternalLink size={12} />
+          </a>
+        ) : null}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {[
+          `${g.kind}/${g.appid}`,
+          locale === "vi" ? "Khu vực: VN" : "Region: VN",
+          ...g.genres.slice(0, 3),
+        ].map((tag) => (
+          <span
+            key={tag}
+            className="font-code text-ink-2 border-line-soft rounded-[6px] border bg-white/4.5 px-2 py-0.75 text-[11px]"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+
   if (g.priceVnd != null && g.priceVnd > 0) {
     // fall through to the priced branch below
   } else if (g.isFree && hasSelection) {
     return (
-      <div className="flex min-w-0 flex-col gap-3 text-sm">
+      <div className="space-y-4">
         {banner}
         {titleRow}
-        <p className="wrap-break-word">
+        <p className="text-ink-2 mt-2 text-[13px]">
           {t.rich("steps.summary.freeToPlay", {
             name: g.name,
             b: (chunks) => <strong>{chunks}</strong>,
@@ -745,17 +955,12 @@ function GameSummary({
       </div>
     );
   } else if (g.priceVnd == null) {
-    // Three distinct null-price cases, ordered most-to-least specific:
-    //   1. hasSelection — a selected item came back with no VN price (region-locked).
-    //   2. no editions AND no DLC AND not free — nothing to select and no price
-    //      (e.g. delisted titles like "Muse Dash - Just as planned").
-    //   3. There are alternatives — user just hasn't picked one yet.
     const nothingToSelect = g.editions.length === 0 && g.dlcAppIds.length === 0;
     return (
-      <div className="flex min-w-0 flex-col gap-3 text-sm">
+      <div className="space-y-4">
         {banner}
         {titleRow}
-        <p className="text-muted-foreground wrap-break-word">
+        <p className="text-ink-3 mt-2 text-[13px]">
           {hasSelection
             ? t.rich("steps.summary.noRegionPrice", {
                 name: g.name,
@@ -768,33 +973,36 @@ function GameSummary({
       </div>
     );
   }
-  // Pick the region-appropriate discount (VND and US sales can differ).
-  // The `format` callback already decides VND vs USD output, so we just need
-  // to surface a strikethrough when *either* region has a discount on this
-  // edition. We prefer the USD discount info when the USD price exists.
+
   const useUsdSide = g.priceUsd != null;
   const dPct = useUsdSide ? g.discountPercentUsd : g.discountPercent;
   const hasDiscount =
     dPct > 0 && (useUsdSide ? g.initialPriceUsd != null : g.initialPriceVnd != null);
+
   return (
-    <div className="flex flex-col gap-3 text-sm">
+    <div className="space-y-4">
       {banner}
       {titleRow}
-      <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold">{format(g.priceVnd, g.priceUsd)}</span>
+      <div className="mt-4 flex items-baseline gap-2.5">
+        <span className="font-code text-ink text-[22px] font-bold tracking-[-0.02em] sm:text-[30px]">
+          {format(g.priceVnd, g.priceUsd)}
+        </span>
         {hasDiscount ? (
           <>
-            <span className="text-muted-foreground text-sm line-through">
+            <span className="text-ink-3 text-[13px] line-through">
               {format(g.initialPriceVnd, g.initialPriceUsd)}
             </span>
-            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs font-medium text-emerald-600">
+            <span
+              className="font-code text-good bg-good-bg rounded-[6px] px-2 py-0.75 text-[12px] font-bold"
+            >
               −{dPct}%
             </span>
           </>
         ) : null}
+        <span className="text-ink-3 text-[12px]">{t("steps.summary.description")}</span>
       </div>
       {g.releaseDate ? (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-ink-3 mt-1.5 text-[11px]">
           {t("steps.summary.released", {
             date: formatReleaseDate(g.releaseDate, locale) ?? g.releaseDate,
           })}
@@ -815,106 +1023,63 @@ function KeySummary({
 
   if (query.isFetching && !query.data) {
     return (
-      <p className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Loader2 className="size-4 animate-spin" /> {t("steps.key.loading")}
+      <p className="text-ink-3 mt-4.5 flex items-center gap-2 text-[13px]">
+        <Loader2 size={14} className="animate-[spin_0.7s_linear_infinite]" />{" "}
+        {t("steps.key.loading")}
       </p>
     );
   }
   if (query.error) {
     return (
-      <p className="text-destructive text-sm">
+      <p className="mt-4.5 text-[13px] text-[#f87171]">
         {query.error instanceof Error ? query.error.message : t("errors.loadFailed")}
       </p>
     );
   }
   const k = query.data;
   if (!k) return null;
+
   return (
-    <div className="flex flex-col gap-1 text-sm">
-      <div className="flex items-baseline justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-semibold">{format(k.lowestPriceVnd)}</span>
-          <span className="text-muted-foreground text-xs">{t("steps.key.lowest")}</span>
-        </div>
-        <a
-          href="https://steamcommunity.com/market/listings/440/Mann%20Co.%20Supply%20Crate%20Key"
-          target="_blank"
-          rel="noreferrer"
-          className="text-muted-foreground inline-flex shrink-0 items-center gap-1 text-xs hover:underline"
+    <>
+      <div className="mt-4.5 flex items-baseline gap-2.5">
+        <span
+          className="font-code text-[34px] font-bold tracking-[-0.02em] text-hi-text-bright text-shadow-glow"
         >
-          {t("steps.summary.openInSteam")} <ExternalLink className="size-3" />
-        </a>
+          {format(k.lowestPriceVnd)}
+        </span>
+        <span className="text-ink-3 text-[12px]">{t("steps.key.lowest")}</span>
       </div>
-      <p className="text-muted-foreground text-xs">
-        {t("steps.key.median", { value: format(k.medianPriceVnd) })} ·{" "}
-        {t("steps.key.volume", { value: k.volume ?? "—" })}
-      </p>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-  className,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      <Label>{label}</Label>
-      {children}
-      {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
-    </div>
-  );
-}
-
-type RouteDetail = { label: string; value: string; bold?: boolean };
-
-function RouteCard({
-  title,
-  cheapestLabel,
-  cost,
-  highlight,
-  details,
-  format,
-}: {
-  title: string;
-  cheapestLabel: string;
-  cost: number | null;
-  highlight: boolean;
-  details: RouteDetail[];
-  format: (v: number | null | undefined) => string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 rounded-lg border p-4 transition-colors",
-        highlight && "border-emerald-500/40 bg-emerald-500/5",
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-muted-foreground text-sm font-medium">{title}</h3>
-        {highlight ? (
-          <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            {cheapestLabel}
-          </span>
-        ) : null}
-      </div>
-      <div className="text-2xl font-semibold">{cost != null ? format(cost) : "—"}</div>
-      <dl className="text-muted-foreground grid gap-1 text-xs">
-        {details.map(({ label, value, bold }) => (
-          <div key={label} className="flex items-center justify-between">
-            <dt className={cn(bold && "text-foreground font-bold")}>{label}</dt>
-            <dd className={cn("text-foreground font-medium", bold && "font-bold")}>{value}</dd>
+      <a
+        href="https://steamcommunity.com/market/listings/440/Mann%20Co.%20Supply%20Crate%20Key"
+        target="_blank"
+        rel="noreferrer"
+        className="text-ink-3 hover:text-hi mt-1 inline-flex items-center gap-1 text-[11.5px] no-underline transition-colors duration-150"
+      >
+        {t("steps.key.viewOnMarket")} <ExternalLink size={11} aria-hidden />
+      </a>
+      <div className="border-line-soft mt-3.5 flex gap-5.5 border-t pt-3.5">
+        <div>
+          <div className="text-ink-3 font-code text-[11px] tracking-[0.07em] uppercase">
+            {t("steps.key.median", { value: "" }).replace(/ $/, "")}
           </div>
-        ))}
-      </dl>
-    </div>
+          <div className="font-code text-ink mt-0.75 text-[14px]">{format(k.medianPriceVnd)}</div>
+        </div>
+        <div>
+          <div className="text-ink-3 font-code text-[11px] tracking-[0.07em] uppercase">
+            {t("steps.key.volume", { value: "" }).replace(/ $/, "")}
+          </div>
+          <div className="font-code text-ink mt-0.75 text-[14px]">{k.volume ?? "—"}</div>
+        </div>
+        <div>
+          <div className="text-ink-3 font-code text-[10px] tracking-[0.07em] uppercase">
+            {t("steps.routes.tf.netPerKey")}
+          </div>
+          <div className="font-code text-ink mt-0.75 text-[14px]">
+            {format(k.lowestPriceVnd ? Math.round(k.lowestPriceVnd * (1 - 0.13)) : null)}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -925,10 +1090,6 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Pick the label shown in the Game card for a single selection so it matches
-// the Versions dropdown trigger. Packages reuse the editionLabel-style rule
-// (prefer the root name when it extends the edition name, e.g.
-// "Subnautica 2" over "Subnautica"); DLCs use their own app name.
 function labelForSelectedItem(item: SelectedItem, rootName: string): string {
   if (item.kind === "dlc") return item.name || rootName;
   if (!item.name) return rootName;
@@ -957,7 +1118,6 @@ function SearchResultsPopover({
 }) {
   const t = useTranslations("steps.game");
 
-  // Input looks like a Steam URL / appid → show a single preview row.
   if (previewItem != null) {
     if (previewQuery.isFetching && !previewQuery.data) {
       return (
@@ -1014,7 +1174,6 @@ function SearchResultsPopover({
     );
   }
 
-  // No search term yet → show recent history.
   if (!hasSearchTerm) {
     if (history.length === 0) return null;
     return (

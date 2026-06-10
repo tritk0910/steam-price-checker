@@ -80,8 +80,7 @@ export function calculate(inputs: CalcInputs): CalcResult {
     cheapestCost = tf.effectiveCostVnd;
   }
 
-  const savingsVsDirect =
-    cheapestCost != null ? round(inputs.gamePriceVnd - cheapestCost) : null;
+  const savingsVsDirect = cheapestCost != null ? round(inputs.gamePriceVnd - cheapestCost) : null;
 
   return { tf, gift, cheapest, savingsVsDirectVnd: savingsVsDirect };
 }
@@ -126,10 +125,7 @@ export function formatUsdNative(n: number | null | undefined): string {
 // Steam release dates arrive as English strings like "23 Mar, 2023" or
 // "Coming soon". Try to parse the date and reformat for the active locale;
 // unparseable values (e.g. "Coming soon") fall through unchanged.
-export function formatReleaseDate(
-  raw: string | null | undefined,
-  locale: string,
-): string | null {
+export function formatReleaseDate(raw: string | null | undefined, locale: string): string | null {
   if (!raw) return null;
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw;
