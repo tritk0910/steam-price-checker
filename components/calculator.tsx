@@ -454,7 +454,7 @@ export function Calculator() {
       {/* ── DASHBOARD GRID ── */}
       <main
         id="dash"
-        className="mt-6 grid grid-cols-[1.25fr_1fr] gap-4.5 max-[920px]:grid-cols-1 sm:mt-13.5"
+        className="mt-6 grid grid-cols-[1fr_1fr] gap-4.5 max-[920px]:grid-cols-1 sm:mt-13.5"
       >
         {/* Card 01+02 — Game info + Editions */}
         <section className="bg-card-glass border-line reveal relative row-span-2 flex flex-col rounded-[18px] border p-6 backdrop-blur-[18px] max-[920px]:row-auto">
@@ -856,7 +856,7 @@ function GameSummary({
       <div className="space-y-4">
         <div className="border-line-soft mt-4 min-h-35.75 w-full overflow-hidden rounded-[12px] border">
           <div
-            className="text-ink-3 font-code bg-stripe flex h-full min-h-35.75 w-full items-center justify-center text-[11px] tracking-widest uppercase"
+            className="text-ink-3 font-code bg-stripe flex h-full aspect-616/353 w-full items-center justify-center text-[11px] tracking-widest uppercase"
           >
             {locale === "vi" ? "ẢNH BÌA GAME — TỰ ĐỘNG TẢI" : "GAME COVER — AUTO LOADING"}
           </div>
@@ -1192,14 +1192,14 @@ function SearchResultsPopover({
               {h.image ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={h.image}
+                  src={h.image.replace(/capsule_616x353\.jpg(\?.*)?$/, "header.jpg")}
                   alt=""
-                  width={64}
-                  height={24}
-                  className="h-6 w-16 shrink-0 rounded object-cover"
+                  width={60}
+                  height={23}
+                  className="h-6 w-[60px] shrink-0 rounded object-cover"
                 />
               ) : (
-                <div className="bg-muted h-6 w-16 shrink-0 rounded" />
+                <div className="bg-muted h-6 w-[60px] shrink-0 rounded" />
               )}
               <span className="flex-1 truncate">{h.name}</span>
             </button>
