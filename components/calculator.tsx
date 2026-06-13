@@ -1196,10 +1196,10 @@ function SearchResultsPopover({
                   alt=""
                   width={60}
                   height={23}
-                  className="h-6 w-[60px] shrink-0 rounded object-cover"
+                  className="h-6 w-15 shrink-0 rounded object-cover"
                 />
               ) : (
-                <div className="bg-muted h-6 w-[60px] shrink-0 rounded" />
+                <div className="bg-muted h-6 w-15 shrink-0 rounded" />
               )}
               <span className="flex-1 truncate">{h.name}</span>
             </button>
