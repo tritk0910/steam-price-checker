@@ -127,5 +127,26 @@
   },
   "errors": {
     "loadFailed": "Không thể tải dữ liệu."
+  },
+  "cart": {
+    "title": "Giỏ hàng",
+    "titleWithCount": "Giỏ hàng ({count} game)",
+    "addToCart": "Thêm vào giỏ",
+    "added": "Đã thêm",
+    "remove": "Xóa",
+    "clearAll": "Xóa tất cả",
+    "total": "Tổng giỏ hàng",
+    "cheapest": "Rẻ nhất",
+    "giftRoute": "Qua dịch vụ gift",
+    "tfRoute": "Qua chìa khóa TF2",
+    "giftRate": "Tỉ lệ",
+    "giftSteamPrice": "Giá Steam VN",
+    "giftCharges": "Dịch vụ thu",
+    "tfKeysNeeded": "Số chìa khóa cần",
+    "tfNetPerKey": "Nạp ví thực nhận mỗi chìa",
+    "tfCashPaid": "Tiền mặt trả cho chìa",
+    "tfWalletAfter": "Số dư ví Steam còn lại",
+    "giftMethod": "Dịch vụ gift",
+    "tfMethod": "Chìa khóa TF2"
   }
 }

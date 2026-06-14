@@ -227,9 +227,7 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
     kind: "app",
     appid,
     name: gameName,
-    imageUrl: vnData.header_image
-      ? vnData.header_image.replace(/\/header\.jpg(\?.*)?$/, "/capsule_616x353.jpg")
-      : null,
+    imageUrl: vnData.header_image ?? null,
     isFree: Boolean(vnData.is_free),
     currency: vn.currency || "VND",
     priceVnd: vn.final,

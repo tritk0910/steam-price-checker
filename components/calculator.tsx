@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowRight, ExternalLink, Loader2, RefreshCw, Search, X } from "lucide-react";
+import { ArrowRight, ExternalLink, Loader2, RefreshCw, Search, ShoppingCart, X } from "lucide-react";
 
 import { VersionsCard, type SelectedItem } from "@/components/versions-card";
 import { calculate, formatReleaseDate, formatUsd, formatUsdNative, formatVnd } from "@/lib/calc";
@@ -20,6 +20,8 @@ import {
 } from "@/lib/steam";
 import { cn } from "@/lib/utils";
 import { useGsapIntro } from "@/hooks/use-gsap-intro";
+import { CartCard } from "@/components/cart-card";
+import { useCart } from "@/lib/use-cart";
 
 const DEFAULT_FEE = 13;
 const DEFAULT_GIFT_RATE = 0.8;
@@ -105,6 +107,8 @@ export function Calculator() {
   const [urlFocused, setUrlFocused] = useState(false);
 
   const { history, addEntry: addToHistory, removeEntry: removeFromHistory } = useSearchHistory();
+  const { entries: cartEntries, addEntry: addToCart, removeEntry: removeFromCart, reorderEntries: reorderCart, clear: clearCart } = useCart();
+  const [addedFlash, setAddedFlash] = useState(false);
 
   const rateQuery = useQuery({
     queryKey: ["exchange-rate"],
@@ -289,6 +293,29 @@ export function Calculator() {
         })
       : null;
 
+  const handleAddToCart = () => {
+    if (!displayedGame || !totalVnd) return;
+    addToCart({
+      id: `${displayedGame.kind}-${displayedGame.appid}`,
+      appid: displayedGame.appid,
+      kind: displayedGame.kind,
+      name: displayedGame.name,
+      imageUrl: displayedGame.imageUrl,
+      items: isBundle
+        ? [{ key: "bundle", label: displayedGame.name, priceVnd: displayedGame.priceVnd, priceUsd: displayedGame.priceUsd }]
+        : selectedItems.map((i) => ({
+            key: i.key,
+            label: labelForSelectedItem(i, rootName),
+            priceVnd: i.priceVnd,
+            priceUsd: i.priceUsd,
+          })),
+      totalVnd,
+      totalUsd,
+    });
+    setAddedFlash(true);
+    setTimeout(() => setAddedFlash(false), 1500);
+  };
+
   const loadItem = (ref: SteamItemRef, urlIfKnown?: string) => {
     setRootItem(ref);
     setSelectedKeys([]);
@@ -457,7 +484,7 @@ export function Calculator() {
         className="mt-6 grid grid-cols-[1fr_1fr] gap-4.5 max-[920px]:grid-cols-1 sm:mt-13.5"
       >
         {/* Card 01+02 — Game info + Editions */}
-        <section className="bg-card-glass border-line reveal relative row-span-2 flex flex-col rounded-[18px] border p-6 backdrop-blur-[18px] max-[920px]:row-auto">
+        <section id="game-info" className="bg-card-glass border-line reveal relative row-span-2 flex flex-col rounded-[18px] border p-6 backdrop-blur-[18px] max-[920px]:row-auto">
           <div data-card-head className="mb-1.5 flex items-center justify-between">
             <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
               <span
@@ -503,6 +530,21 @@ export function Calculator() {
             format={fmtPair}
             noCard
           />
+          {displayedGame && totalVnd ? (
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                className={cn(
+                  "inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border border-hi-border bg-hi-bg px-4 text-[12.5px] font-semibold text-hi-text-strong transition-[transform,filter,opacity] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0",
+                  addedFlash && "opacity-60",
+                )}
+              >
+                <ShoppingCart size={13} aria-hidden />
+                {addedFlash ? t("cart.added") : t("cart.addToCart")}
+              </button>
+            </div>
+          ) : null}
         </section>
 
         {/* Card 03 — TF2 Key */}
@@ -803,6 +845,35 @@ export function Calculator() {
               : null}
           </section>
         ) : null}
+
+        {cartEntries.length > 0 ? (
+          <CartCard
+            entries={cartEntries}
+            onRemove={removeFromCart}
+            onReorder={reorderCart}
+            onSelect={(entry) => {
+              loadItem({ kind: entry.kind, id: entry.appid });
+              const target = document.getElementById("game-info");
+              if (!target) return;
+              import("gsap").then(async ({ gsap }) => {
+                const { ScrollToPlugin } = await import("gsap/ScrollToPlugin");
+                gsap.registerPlugin(ScrollToPlugin);
+                gsap.to(window, {
+                  duration: 0.85,
+                  scrollTo: { y: target, offsetY: 24 },
+                  ease: "power3.inOut",
+                });
+              });
+            }}
+            onClear={clearCart}
+            keyPriceVnd={keyQuery.data?.lowestPriceVnd ?? null}
+            feePercent={effectiveFee}
+            keyBuyPrice={effectiveKeyBuy}
+            giftRate={effectiveGiftRate}
+            vndPerUsd={usdRate}
+            showUsd={showUsd}
+          />
+        ) : null}
       </main>
 
       <footer className="border-line-soft text-ink-3 mt-17.5 mb-10 flex flex-wrap items-center justify-between gap-2.5 border-t pt-6 text-[12.5px]">
@@ -818,19 +889,20 @@ export function Calculator() {
 }
 
 function BannerImage({ src, alt }: { src: string; alt: string }) {
-  const [imgSrc, setImgSrc] = useState(src);
+  const [failed, setFailed] = useState(false);
+
+  if (failed) return null;
+
   return (
     <Image
-      src={imgSrc}
+      src={src}
       alt={alt}
-      width={616}
-      height={353}
-      sizes="(max-width: 768px) 100vw, 616px"
+      width={460}
+      height={215}
+      sizes="(max-width: 768px) 100vw, 460px"
       className="block h-auto w-full"
       priority
-      onError={() =>
-        setImgSrc((s) => s.replace("/capsule_616x353.jpg", "/header.jpg"))
-      }
+      onError={() => setFailed(true)}
     />
   );
 }

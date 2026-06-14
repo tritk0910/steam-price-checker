@@ -127,5 +127,26 @@
   },
   "errors": {
     "loadFailed": "Failed to load."
+  },
+  "cart": {
+    "title": "Cart",
+    "titleWithCount": "Cart ({count} {count, plural, =1 {game} other {games}})",
+    "addToCart": "Add to cart",
+    "added": "Added",
+    "remove": "Remove",
+    "clearAll": "Clear all",
+    "total": "Cart total",
+    "cheapest": "Cheapest",
+    "giftRoute": "Via gifting service",
+    "tfRoute": "Via TF2 keys",
+    "giftRate": "Rate",
+    "giftSteamPrice": "Steam VN price",
+    "giftCharges": "Service charges",
+    "tfKeysNeeded": "Keys needed",
+    "tfNetPerKey": "Net wallet per key",
+    "tfCashPaid": "Cash paid for keys",
+    "tfWalletAfter": "Steam Wallet balance remaining",
+    "giftMethod": "Gifting service",
+    "tfMethod": "TF2 keys"
   }
 }
