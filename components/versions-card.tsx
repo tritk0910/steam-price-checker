@@ -304,10 +304,12 @@ function OptionRow({
 }
 
 function editionLabel(edition: Edition, gameName: string): string {
-  // Prefer the full app name when Steam's package label is a (case-insensitive)
-  // prefix of it — Steam sometimes uses the franchise name for the base sub,
-  // e.g. option_text "Subnautica" for the "Subnautica 2" app. Equal strings
-  // also satisfy this, so the dropdown shows the canonical app name.
-  if (gameName.toLowerCase().startsWith(edition.name.toLowerCase())) return gameName;
-  return edition.name;
+  const name = edition.name.toLowerCase();
+  const game = gameName.toLowerCase();
+  // Franchise/base case: "Subnautica" package for "Subnautica 2" app.
+  if (game.startsWith(name)) return gameName;
+  // Full edition name already includes the game name: "AI LIMIT Deluxe Edition".
+  if (name.startsWith(game)) return edition.name;
+  // Edition-type only: "Deluxe Edition" → "AI LIMIT Deluxe Edition".
+  return `${gameName} ${edition.name}`;
 }

@@ -341,13 +341,15 @@ function SortableCartItem({
           <p className="font-heading text-ink group-hover:text-hi truncate text-[13.5px] font-semibold transition-colors duration-150">
             {entry.name}
           </p>
-          <div className="text-ink-3 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[11.5px]">
-            {entry.items.map((item) => (
-              <span key={item.key} className="truncate">
-                {item.label}
-              </span>
-            ))}
-          </div>
+          {entry.items.length > 1 && (
+            <div className="text-ink-3 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[11.5px]">
+              {entry.items.map((item) => (
+                <span key={item.key} className="truncate">
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </button>
 

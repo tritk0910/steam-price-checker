@@ -62,5 +62,10 @@ export function useCart() {
     writeStorage([]);
   }, []);
 
-  return { entries, addEntry, removeEntry, reorderEntries, clear };
+  const replaceEntries = useCallback((next: CartEntry[]) => {
+    setEntries(next);
+    writeStorage(next);
+  }, []);
+
+  return { entries, addEntry, removeEntry, reorderEntries, clear, replaceEntries };
 }

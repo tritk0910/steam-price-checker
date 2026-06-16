@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowRight, ExternalLink, Loader2, RefreshCw, Search, ShoppingCart, X } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, Link2, Loader2, RefreshCw, Search, ShoppingCart, X } from "lucide-react";
 
 import { VersionsCard, type SelectedItem } from "@/components/versions-card";
 import { calculate, formatReleaseDate, formatUsd, formatUsdNative, formatVnd } from "@/lib/calc";
@@ -85,6 +86,26 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
+function encodeCartParam(entries: unknown[]): string {
+  const json = JSON.stringify(entries);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+function decodeCartParam(raw: string): unknown[] | null {
+  try {
+    const binary = atob(raw);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export function Calculator() {
   const t = useTranslations();
   const locale = useLocale();
@@ -102,13 +123,22 @@ export function Calculator() {
   const { showUsd } = useCurrency();
   const [vndPerUsd, setVndPerUsd] = useState<string>(String(DEFAULT_VND_PER_USD));
   const userTouchedRateRef = useRef(false);
+  const urlRestoredRef = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
+  const router = useRouter();
 
   // URL bar focus state for the focus-ring effect
   const [urlFocused, setUrlFocused] = useState(false);
 
   const { history, addEntry: addToHistory, removeEntry: removeFromHistory } = useSearchHistory();
-  const { entries: cartEntries, addEntry: addToCart, removeEntry: removeFromCart, reorderEntries: reorderCart, clear: clearCart } = useCart();
+  const { entries: cartEntries, addEntry: addToCart, removeEntry: removeFromCart, reorderEntries: reorderCart, clear: clearCart, replaceEntries } = useCart();
   const [addedFlash, setAddedFlash] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const debouncedFee = useDebouncedValue(feePercent, 300);
+  const debouncedKeyBuy = useDebouncedValue(keyBuyPrice, 300);
+  const debouncedGiftRate = useDebouncedValue(giftRate, 300);
+  const debouncedVnd = useDebouncedValue(vndPerUsd, 300);
 
   const rateQuery = useQuery({
     queryKey: ["exchange-rate"],
@@ -162,11 +192,80 @@ export function Calculator() {
 
   const firstEditionKey = rootGameQuery.data?.editions[0]?.packageid;
   useEffect(() => {
-    if (firstEditionKey != null) {
+    // Skip auto-select when selectedKeys were already restored from the URL.
+    if (firstEditionKey != null && !urlRestoredRef.current) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedKeys([`pkg-${firstEditionKey}`]);
     }
   }, [firstEditionKey]);
+
+  // Mount — restore state from URL query-params once (client-only).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    const kind = params.get("kind") as "app" | "bundle" | null;
+    const idRaw = params.get("id");
+    if (kind && idRaw && (kind === "app" || kind === "bundle")) {
+      const id = Number(idRaw);
+      if (Number.isFinite(id) && id > 0) {
+        setRootItem({ kind, id });
+        setUrlInput(
+          `https://store.steampowered.com/${kind === "bundle" ? "bundle" : "app"}/${id}/`,
+        );
+        const keysRaw = params.get("keys");
+        if (keysRaw) {
+          const restored = keysRaw.split(",").filter(Boolean);
+          if (restored.length > 0) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setSelectedKeys(restored);
+            urlRestoredRef.current = true;
+          }
+        }
+        const modeRaw = params.get("mode");
+        if (modeRaw === "single" || modeRaw === "multi") setSelectionMode(modeRaw);
+      }
+    }
+
+    const fee = params.get("fee"); if (fee) setFeePercent(fee);
+    const kbuy = params.get("kbuy"); if (kbuy) setKeyBuyPrice(kbuy);
+    const gift = params.get("gift"); if (gift) setGiftRate(gift);
+    const vnd = params.get("vnd");
+    if (vnd) {
+      setVndPerUsd(vnd);
+      userTouchedRateRef.current = true;
+    }
+
+    const cartRaw = params.get("cart");
+    if (cartRaw) {
+      const decoded = decodeCartParam(cartRaw);
+      if (decoded) replaceEntries(decoded as Parameters<typeof replaceEntries>[0]);
+    }
+
+    setHydrated(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Live URL sync — mirrors state into the address bar after mount hydration.
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const p = new URLSearchParams();
+    if (rootItem) {
+      p.set("kind", rootItem.kind);
+      p.set("id", String(rootItem.id));
+      if (selectedKeys.length > 0) p.set("keys", selectedKeys.join(","));
+      p.set("mode", selectionMode);
+    }
+    p.set("fee", debouncedFee);
+    p.set("kbuy", debouncedKeyBuy);
+    p.set("gift", debouncedGiftRate);
+    p.set("vnd", debouncedVnd);
+    if (cartEntries.length > 0) {
+      p.set("cart", encodeCartParam(cartEntries));
+    }
+
+    router.replace(`?${p.toString()}`, { scroll: false });
+  }, [hydrated, rootItem, selectedKeys, selectionMode, debouncedFee, debouncedKeyBuy, debouncedGiftRate, debouncedVnd, cartEntries, router]);
 
   const selectedDlcAppIds = selectedKeys
     .filter((k) => k.startsWith("dlc-"))
@@ -317,6 +416,7 @@ export function Calculator() {
   };
 
   const loadItem = (ref: SteamItemRef, urlIfKnown?: string) => {
+    urlRestoredRef.current = false;
     setRootItem(ref);
     setSelectedKeys([]);
     const fallback =
@@ -530,8 +630,21 @@ export function Calculator() {
             format={fmtPair}
             noCard
           />
-          {displayedGame && totalVnd ? (
-            <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex items-center justify-between gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                });
+              }}
+              className="btn-primary inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border-none px-4 text-[12.5px] font-semibold whitespace-nowrap text-[#061018] transition-[transform,filter] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0"
+            >
+              {copied ? <Check size={13} aria-hidden /> : <Link2 size={13} aria-hidden />}
+              {copied ? "Copied!" : "Share"}
+            </button>
+            {displayedGame && totalVnd ? (
               <button
                 type="button"
                 onClick={handleAddToCart}
@@ -543,8 +656,8 @@ export function Calculator() {
                 <ShoppingCart size={13} aria-hidden />
                 {addedFlash ? t("cart.added") : t("cart.addToCart")}
               </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </section>
 
         {/* Card 03 — TF2 Key */}
@@ -1165,8 +1278,11 @@ function parseNumber(value: string): number | null {
 function labelForSelectedItem(item: SelectedItem, rootName: string): string {
   if (item.kind === "dlc") return item.name || rootName;
   if (!item.name) return rootName;
-  if (rootName.toLowerCase().startsWith(item.name.toLowerCase())) return rootName;
-  return item.name;
+  const name = item.name.toLowerCase();
+  const root = rootName.toLowerCase();
+  if (root.startsWith(name)) return rootName;
+  if (name.startsWith(root)) return item.name;
+  return `${rootName} ${item.name}`;
 }
 
 function SearchResultsPopover({
