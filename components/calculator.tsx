@@ -86,25 +86,6 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-function encodeCartParam(entries: unknown[]): string {
-  const json = JSON.stringify(entries);
-  const bytes = new TextEncoder().encode(json);
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary);
-}
-
-function decodeCartParam(raw: string): unknown[] | null {
-  try {
-    const binary = atob(raw);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const parsed = JSON.parse(new TextDecoder().decode(bytes));
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
 
 export function Calculator() {
   const t = useTranslations();
@@ -131,7 +112,7 @@ export function Calculator() {
   const [urlFocused, setUrlFocused] = useState(false);
 
   const { history, addEntry: addToHistory, removeEntry: removeFromHistory } = useSearchHistory();
-  const { entries: cartEntries, addEntry: addToCart, removeEntry: removeFromCart, reorderEntries: reorderCart, clear: clearCart, replaceEntries } = useCart();
+  const { entries: cartEntries, addEntry: addToCart, removeEntry: removeFromCart, reorderEntries: reorderCart, clear: clearCart } = useCart();
   const [addedFlash, setAddedFlash] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -235,12 +216,6 @@ export function Calculator() {
       userTouchedRateRef.current = true;
     }
 
-    const cartRaw = params.get("cart");
-    if (cartRaw) {
-      const decoded = decodeCartParam(cartRaw);
-      if (decoded) replaceEntries(decoded as Parameters<typeof replaceEntries>[0]);
-    }
-
     setHydrated(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -260,12 +235,9 @@ export function Calculator() {
     p.set("kbuy", debouncedKeyBuy);
     p.set("gift", debouncedGiftRate);
     p.set("vnd", debouncedVnd);
-    if (cartEntries.length > 0) {
-      p.set("cart", encodeCartParam(cartEntries));
-    }
 
     router.replace(`?${p.toString()}`, { scroll: false });
-  }, [hydrated, rootItem, selectedKeys, selectionMode, debouncedFee, debouncedKeyBuy, debouncedGiftRate, debouncedVnd, cartEntries, router]);
+  }, [hydrated, rootItem, selectedKeys, selectionMode, debouncedFee, debouncedKeyBuy, debouncedGiftRate, debouncedVnd, router]);
 
   const selectedDlcAppIds = selectedKeys
     .filter((k) => k.startsWith("dlc-"))
@@ -415,10 +387,21 @@ export function Calculator() {
     setTimeout(() => setAddedFlash(false), 1500);
   };
 
-  const loadItem = (ref: SteamItemRef, urlIfKnown?: string) => {
-    urlRestoredRef.current = false;
+  const loadItem = (
+    ref: SteamItemRef,
+    urlIfKnown?: string,
+    initialKeys?: string[],
+    initialMode?: "single" | "multi",
+  ) => {
+    if (initialKeys && initialKeys.length > 0) {
+      urlRestoredRef.current = true;
+      setSelectedKeys(initialKeys);
+      if (initialMode) setSelectionMode(initialMode);
+    } else {
+      urlRestoredRef.current = false;
+      setSelectedKeys([]);
+    }
     setRootItem(ref);
-    setSelectedKeys([]);
     const fallback =
       ref.kind === "bundle"
         ? `https://store.steampowered.com/bundle/${ref.id}/`
@@ -595,6 +578,22 @@ export function Calculator() {
               </span>
               <span>{t("steps.summary.title")}</span>
             </div>
+            {rootItem != null ? (
+              <button
+                type="button"
+                onClick={() => {
+                  urlRestoredRef.current = false;
+                  setRootItem(null);
+                  setSelectedKeys([]);
+                  setSelectionMode("single");
+                  setUrlInput("");
+                }}
+                aria-label="Clear game"
+                className="border-line text-ink-2 hover:text-ink hover:border-hi grid h-8 w-8 shrink-0 cursor-pointer appearance-none place-items-center rounded-[9px] border bg-white/5 transition-[color,border-color] duration-150"
+              >
+                <X size={14} aria-hidden />
+              </button>
+            ) : null}
           </div>
           <GameSummary
             query={displayedQuery}
@@ -630,34 +629,38 @@ export function Calculator() {
             format={fmtPair}
             noCard
           />
-          <div className="mt-5 flex items-center justify-between gap-2.5">
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href).then(() => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                });
-              }}
-              className="btn-primary inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border-none px-4 text-[12.5px] font-semibold whitespace-nowrap text-[#061018] transition-[transform,filter] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0"
-            >
-              {copied ? <Check size={13} aria-hidden /> : <Link2 size={13} aria-hidden />}
-              {copied ? "Copied!" : "Share"}
-            </button>
-            {displayedGame && totalVnd ? (
-              <button
-                type="button"
-                onClick={handleAddToCart}
-                className={cn(
-                  "inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border border-hi-border bg-hi-bg px-4 text-[12.5px] font-semibold text-hi-text-strong transition-[transform,filter,opacity] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0",
-                  addedFlash && "opacity-60",
-                )}
-              >
-                <ShoppingCart size={13} aria-hidden />
-                {addedFlash ? t("cart.added") : t("cart.addToCart")}
-              </button>
-            ) : null}
-          </div>
+          {(rootItem != null || (displayedGame != null && totalVnd != null)) ? (
+            <div className="mt-5 flex items-center justify-between gap-2.5">
+              {rootItem != null ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    });
+                  }}
+                  className="btn-primary inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border-none px-4 text-[12.5px] font-semibold whitespace-nowrap text-[#061018] transition-[transform,filter] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0"
+                >
+                  {copied ? <Check size={13} aria-hidden /> : <Link2 size={13} aria-hidden />}
+                  {copied ? "Copied!" : "Share"}
+                </button>
+              ) : null}
+              {displayedGame && totalVnd ? (
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  className={cn(
+                    "inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border border-hi-border bg-hi-bg px-4 text-[12.5px] font-semibold text-hi-text-strong transition-[transform,filter,opacity] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0",
+                    addedFlash && "opacity-60",
+                  )}
+                >
+                  <ShoppingCart size={13} aria-hidden />
+                  {addedFlash ? t("cart.added") : t("cart.addToCart")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         {/* Card 03 — TF2 Key */}
@@ -965,7 +968,9 @@ export function Calculator() {
             onRemove={removeFromCart}
             onReorder={reorderCart}
             onSelect={(entry) => {
-              loadItem({ kind: entry.kind, id: entry.appid });
+              const keys = entry.kind === "app" ? entry.items.map((i) => i.key) : [];
+              const mode: "single" | "multi" = keys.length > 1 ? "multi" : "single";
+              loadItem({ kind: entry.kind, id: entry.appid }, undefined, keys, mode);
               const target = document.getElementById("game-info");
               if (!target) return;
               import("gsap").then(async ({ gsap }) => {
