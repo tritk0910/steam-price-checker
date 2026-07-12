@@ -35,6 +35,7 @@ export type GamePriceResult = {
   kind: "app" | "bundle";
   appid: number;
   name: string;
+  description: string | null;
   imageUrl: string | null;
   isFree: boolean;
   currency: string;
@@ -227,6 +228,7 @@ export async function fetchGamePrice(appid: number): Promise<GamePriceResult> {
     kind: "app",
     appid,
     name: gameName,
+    description: vnData.short_description ?? null,
     imageUrl: vnData.header_image ?? null,
     isFree: Boolean(vnData.is_free),
     currency: vn.currency || "VND",
@@ -345,6 +347,7 @@ export async function fetchBundlePrice(bundleId: number): Promise<GamePriceResul
     kind: "bundle",
     appid: bundleId,
     name: vnData.name ?? `Bundle ${bundleId}`,
+    description: null,
     imageUrl: vnData.header_image_url ?? vnData.main_capsule ?? null,
     isFree: false,
     currency: "VND",
@@ -366,6 +369,7 @@ export async function fetchBundlePrice(bundleId: number): Promise<GamePriceResul
 type AppdetailsData = {
   name?: string;
   is_free?: boolean;
+  short_description?: string;
   header_image?: string;
   price_overview?: {
     final?: number;

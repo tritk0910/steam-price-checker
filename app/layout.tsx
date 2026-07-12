@@ -22,9 +22,12 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://steamgift.neozzz.dev";
+
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("header");
   return {
+    metadataBase: new URL(SITE_URL),
     title: t("title"),
     description: t("subtitle"),
   };
