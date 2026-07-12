@@ -6,7 +6,17 @@ import Image from "next/image";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowRight, Check, ExternalLink, Link2, Loader2, RefreshCw, Search, ShoppingCart, X } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  ExternalLink,
+  Link2,
+  Loader2,
+  RefreshCw,
+  Search,
+  ShoppingCart,
+  X,
+} from "lucide-react";
 
 import { VersionsCard, type SelectedItem } from "@/components/versions-card";
 import { calculate, formatReleaseDate, formatUsd, formatUsdNative, formatVnd } from "@/lib/calc";
@@ -86,7 +96,6 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-
 export function Calculator() {
   const t = useTranslations();
   const locale = useLocale();
@@ -112,7 +121,13 @@ export function Calculator() {
   const [urlFocused, setUrlFocused] = useState(false);
 
   const { history, addEntry: addToHistory, removeEntry: removeFromHistory } = useSearchHistory();
-  const { entries: cartEntries, addEntry: addToCart, removeEntry: removeFromCart, reorderEntries: reorderCart, clear: clearCart } = useCart();
+  const {
+    entries: cartEntries,
+    addEntry: addToCart,
+    removeEntry: removeFromCart,
+    reorderEntries: reorderCart,
+    clear: clearCart,
+  } = useCart();
   const [addedFlash, setAddedFlash] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -175,7 +190,6 @@ export function Calculator() {
   useEffect(() => {
     // Skip auto-select when selectedKeys were already restored from the URL.
     if (firstEditionKey != null && !urlRestoredRef.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedKeys([`pkg-${firstEditionKey}`]);
     }
   }, [firstEditionKey]);
@@ -189,6 +203,7 @@ export function Calculator() {
     if (kind && idRaw && (kind === "app" || kind === "bundle")) {
       const id = Number(idRaw);
       if (Number.isFinite(id) && id > 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setRootItem({ kind, id });
         setUrlInput(
           `https://store.steampowered.com/${kind === "bundle" ? "bundle" : "app"}/${id}/`,
@@ -197,7 +212,6 @@ export function Calculator() {
         if (keysRaw) {
           const restored = keysRaw.split(",").filter(Boolean);
           if (restored.length > 0) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSelectedKeys(restored);
             urlRestoredRef.current = true;
           }
@@ -207,9 +221,12 @@ export function Calculator() {
       }
     }
 
-    const fee = params.get("fee"); if (fee) setFeePercent(fee);
-    const kbuy = params.get("kbuy"); if (kbuy) setKeyBuyPrice(kbuy);
-    const gift = params.get("gift"); if (gift) setGiftRate(gift);
+    const fee = params.get("fee");
+    if (fee) setFeePercent(fee);
+    const kbuy = params.get("kbuy");
+    if (kbuy) setKeyBuyPrice(kbuy);
+    const gift = params.get("gift");
+    if (gift) setGiftRate(gift);
     const vnd = params.get("vnd");
     if (vnd) {
       setVndPerUsd(vnd);
@@ -217,7 +234,6 @@ export function Calculator() {
     }
 
     setHydrated(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Live URL sync — mirrors state into the address bar after mount hydration.
@@ -237,7 +253,17 @@ export function Calculator() {
     p.set("vnd", debouncedVnd);
 
     router.replace(`?${p.toString()}`, { scroll: false });
-  }, [hydrated, rootItem, selectedKeys, selectionMode, debouncedFee, debouncedKeyBuy, debouncedGiftRate, debouncedVnd, router]);
+  }, [
+    hydrated,
+    rootItem,
+    selectedKeys,
+    selectionMode,
+    debouncedFee,
+    debouncedKeyBuy,
+    debouncedGiftRate,
+    debouncedVnd,
+    router,
+  ]);
 
   const selectedDlcAppIds = selectedKeys
     .filter((k) => k.startsWith("dlc-"))
@@ -353,16 +379,18 @@ export function Calculator() {
   const usdRate = parseNumber(vndPerUsd) ?? DEFAULT_VND_PER_USD;
 
   const gamePriceVnd = displayedGame?.priceVnd ?? null;
-  const result =
-    gamePriceVnd && marketKeyPrice
-      ? calculate({
-          gamePriceVnd,
-          keyListPriceVnd: marketKeyPrice,
-          keyBuyPriceVnd: effectiveKeyBuy,
-          marketplaceFeePercent: effectiveFee,
-          giftingRate: effectiveGiftRate,
-        })
-      : null;
+  // Only the game price is required. When the TF2 key price is unavailable
+  // (e.g. the Steam Market API is rate-limited), `calculate` drops the TF2
+  // route but still returns the gifting route so the verdict card can render.
+  const result = gamePriceVnd
+    ? calculate({
+        gamePriceVnd,
+        keyListPriceVnd: marketKeyPrice,
+        keyBuyPriceVnd: effectiveKeyBuy,
+        marketplaceFeePercent: effectiveFee,
+        giftingRate: effectiveGiftRate,
+      })
+    : null;
 
   const handleAddToCart = () => {
     if (!displayedGame || !totalVnd) return;
@@ -373,7 +401,14 @@ export function Calculator() {
       name: displayedGame.name,
       imageUrl: displayedGame.imageUrl,
       items: isBundle
-        ? [{ key: "bundle", label: displayedGame.name, priceVnd: displayedGame.priceVnd, priceUsd: displayedGame.priceUsd }]
+        ? [
+            {
+              key: "bundle",
+              label: displayedGame.name,
+              priceVnd: displayedGame.priceVnd,
+              priceUsd: displayedGame.priceUsd,
+            },
+          ]
         : selectedItems.map((i) => ({
             key: i.key,
             label: labelForSelectedItem(i, rootName),
@@ -445,11 +480,9 @@ export function Calculator() {
       <header className="relative z-10 max-w-190 pt-13.5 pb-7.5 max-sm:pt-14">
         <div
           data-eyebrow
-          className="font-code mb-5.5 inline-flex items-center gap-2 rounded-full border border-hi-border bg-hi-bg px-3.5 py-1.5 text-[11.5px] text-hi-text-strong tracking-[0.14em] uppercase"
+          className="font-code border-hi-border bg-hi-bg text-hi-text-strong mb-5.5 inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-[11.5px] tracking-[0.14em] uppercase"
         >
-          <span
-            className="bg-hi h-1.5 w-1.5 shrink-0 rounded-full shadow-glow"
-          />
+          <span className="bg-hi shadow-glow h-1.5 w-1.5 shrink-0 rounded-full" />
           <span>{t("hero.eyebrow")}</span>
         </div>
 
@@ -458,9 +491,7 @@ export function Calculator() {
           className="font-heading text-ink text-[clamp(38px,5.2vw,58px)] leading-[1.06] font-bold tracking-tight text-balance"
         >
           {t("hero.h1Plain")}{" "}
-          <em
-            className="bg-clip-text text-gradient-hi text-transparent not-italic"
-          >
+          <em className="text-gradient-hi bg-clip-text text-transparent not-italic">
             {t("hero.h1Accent")}
           </em>
           {t("hero.h1Tail")}
@@ -476,7 +507,7 @@ export function Calculator() {
             className={cn(
               "bg-card-glass mt-8.5 flex gap-2.5 rounded-[18px] border p-2.5 backdrop-blur-[18px] transition-[border-color,box-shadow] duration-200 max-sm:flex-col",
               urlFocused
-                ? "border-[color-mix(in_oklab,var(--accent-hex)_55%,transparent)] shadow-search-focus"
+                ? "shadow-search-focus border-[color-mix(in_oklab,var(--accent-hex)_55%,transparent)]"
                 : "border-line shadow-search",
             )}
           >
@@ -567,12 +598,15 @@ export function Calculator() {
         className="mt-6 grid grid-cols-[1fr_1fr] gap-4.5 max-[920px]:grid-cols-1 sm:mt-13.5"
       >
         {/* Card 01+02 — Game info + Editions */}
-        <section id="game-info" className="bg-card-glass border-line reveal relative row-span-2 flex flex-col rounded-[18px] border p-6 backdrop-blur-[18px] max-[920px]:row-auto">
+        <section
+          id="game-info"
+          className="bg-card-glass border-line reveal relative row-span-2 flex flex-col rounded-[18px] border p-6 backdrop-blur-[18px] max-[920px]:row-auto"
+        >
           <div data-card-head className="mb-1.5 flex items-center justify-between">
             <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
               <span
                 data-step-num
-                className="font-code grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-[10.5px] text-hi-text"
+                className="font-code border-hi-border text-hi-text grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border text-[10.5px]"
               >
                 01
               </span>
@@ -603,14 +637,11 @@ export function Calculator() {
             format={fmtPair}
           />
 
-          <div
-            data-card-head
-            className="mt-6.5 mb-1.5 flex items-center justify-between"
-          >
+          <div data-card-head className="mt-6.5 mb-1.5 flex items-center justify-between">
             <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
               <span
                 data-step-num
-                className="font-code grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-[10.5px] text-hi-text"
+                className="font-code border-hi-border text-hi-text grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border text-[10.5px]"
               >
                 02
               </span>
@@ -629,7 +660,7 @@ export function Calculator() {
             format={fmtPair}
             noCard
           />
-          {(rootItem != null || (displayedGame != null && totalVnd != null)) ? (
+          {rootItem != null || (displayedGame != null && totalVnd != null) ? (
             <div className="mt-5 flex items-center justify-between gap-2.5">
               {rootItem != null ? (
                 <button
@@ -651,7 +682,7 @@ export function Calculator() {
                   type="button"
                   onClick={handleAddToCart}
                   className={cn(
-                    "inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border border-hi-border bg-hi-bg px-4 text-[12.5px] font-semibold text-hi-text-strong transition-[transform,filter,opacity] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0",
+                    "border-hi-border bg-hi-bg text-hi-text-strong inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border px-4 text-[12.5px] font-semibold transition-[transform,filter,opacity] duration-150 hover:-translate-y-px hover:brightness-[1.08] active:translate-y-0",
                     addedFlash && "opacity-60",
                   )}
                 >
@@ -664,14 +695,12 @@ export function Calculator() {
         </section>
 
         {/* Card 03 — TF2 Key */}
-        <section
-          className="bg-card-glass border-line reveal relative rounded-[18px] border p-6 backdrop-blur-[18px] [animation-delay:0.06s]"
-        >
+        <section className="bg-card-glass border-line reveal relative rounded-[18px] border p-6 backdrop-blur-[18px] [animation-delay:0.06s]">
           <div data-card-head className="mb-1.5 flex items-center justify-between">
             <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
               <span
                 data-step-num
-                className="font-code grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-[10.5px] text-hi-text"
+                className="font-code border-hi-border text-hi-text grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border text-[10.5px]"
               >
                 03
               </span>
@@ -698,14 +727,12 @@ export function Calculator() {
         </section>
 
         {/* Card 04 — Params */}
-        <section
-          className="bg-card-glass border-line reveal relative rounded-[18px] border p-6 backdrop-blur-[18px] [animation-delay:0.12s]"
-        >
+        <section className="bg-card-glass border-line reveal relative rounded-[18px] border p-6 backdrop-blur-[18px] [animation-delay:0.12s]">
           <div data-card-head className="mb-1.5 flex items-center justify-between">
             <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
               <span
                 data-step-num
-                className="font-code grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-[10.5px] text-hi-text"
+                className="font-code border-hi-border text-hi-text grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border text-[10.5px]"
               >
                 04
               </span>
@@ -798,9 +825,7 @@ export function Calculator() {
 
         {/* Card 05 — Verdict (full width) */}
         {result && displayedGame?.priceVnd ? (
-          <section
-            className="bg-card-glass border-line reveal col-span-full overflow-hidden rounded-[18px] border p-0 backdrop-blur-[18px] [animation-delay:0.18s]"
-          >
+          <section className="bg-card-glass border-line reveal col-span-full overflow-hidden rounded-[18px] border p-0 backdrop-blur-[18px] [animation-delay:0.18s]">
             {/* verdict-inner */}
             <div className="grid grid-cols-[1fr_auto_1fr] items-stretch max-[920px]:grid-cols-1">
               {/* Gift route */}
@@ -859,8 +884,8 @@ export function Calculator() {
                   VS
                 </span>
                 <div className="bg-line absolute top-[calc(50%+26px)] bottom-3.5 left-1/2 w-px -translate-x-1/2 max-[920px]:hidden" />
-                <div className="bg-line absolute top-1/2 left-3.5 right-[calc(50%+30px)] hidden h-px -translate-y-1/2 max-[920px]:block" />
-                <div className="bg-line absolute top-1/2 left-[calc(50%+30px)] right-3.5 hidden h-px -translate-y-1/2 max-[920px]:block" />
+                <div className="bg-line absolute top-1/2 right-[calc(50%+30px)] left-3.5 hidden h-px -translate-y-1/2 max-[920px]:block" />
+                <div className="bg-line absolute top-1/2 right-3.5 left-[calc(50%+30px)] hidden h-px -translate-y-1/2 max-[920px]:block" />
               </div>
 
               {/* TF2 route */}
@@ -888,37 +913,43 @@ export function Calculator() {
                     result.cheapest === "tf" ? "text-good" : "text-ink",
                   )}
                 >
-                  {fmt(result.tf.effectiveCostVnd)}
+                  {result.tf ? fmt(result.tf.effectiveCostVnd) : "—"}
                 </div>
                 {/* route-detail */}
-                <div className="mt-3 flex flex-col gap-1.25">
-                  {(
-                    [
-                      [t("steps.routes.tf.keysNeeded"), String(result.tf.keysNeeded)],
-                      [t("steps.routes.tf.netPerKey"), fmt(result.tf.netPerKeyVnd)],
-                      [t("steps.routes.tf.cashPaid"), fmt(result.tf.cashPaidVnd)],
-                    ] as [string, string][]
-                  ).map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="text-ink-3 flex items-baseline justify-between gap-3 text-[12.5px]"
-                    >
-                      <span>{label}</span>
-                      <span className="font-code shrink-0">{value}</span>
+                {result.tf ? (
+                  <div className="mt-3 flex flex-col gap-1.25">
+                    {(
+                      [
+                        [t("steps.routes.tf.keysNeeded"), String(result.tf.keysNeeded)],
+                        [t("steps.routes.tf.netPerKey"), fmt(result.tf.netPerKeyVnd)],
+                        [t("steps.routes.tf.cashPaid"), fmt(result.tf.cashPaidVnd)],
+                      ] as [string, string][]
+                    ).map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="text-ink-3 flex items-baseline justify-between gap-3 text-[12.5px]"
+                      >
+                        <span>{label}</span>
+                        <span className="font-code shrink-0">{value}</span>
+                      </div>
+                    ))}
+                    <div className="text-ink border-line-soft mt-1 flex items-baseline justify-between gap-3 border-t pt-1.5 text-[12.5px] font-bold">
+                      <span>{t("steps.routes.tf.walletAfter")}</span>
+                      <span className="font-code shrink-0">
+                        {fmt(result.tf.walletAfterPurchaseVnd)}
+                      </span>
                     </div>
-                  ))}
-                  <div className="text-ink border-line-soft mt-1 flex items-baseline justify-between gap-3 border-t pt-1.5 text-[12.5px] font-bold">
-                    <span>{t("steps.routes.tf.walletAfter")}</span>
-                    <span className="font-code shrink-0">
-                      {fmt(result.tf.walletAfterPurchaseVnd)}
-                    </span>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-ink-3 mt-3 text-[12.5px] leading-[1.5]">
+                    {t("steps.routes.tf.unavailable")}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* savings-bar */}
-            {result.gift && result.cheapest !== "tie"
+            {result.gift && result.tf && result.cheapest !== "tie"
               ? (() => {
                   const giftCost = result.gift.totalCostVnd ?? 0;
                   const tfCost = result.tf.effectiveCostVnd;
@@ -1045,9 +1076,7 @@ function GameSummary({
     return (
       <div className="space-y-4">
         <div className="border-line-soft mt-4 min-h-35.75 w-full overflow-hidden rounded-[12px] border">
-          <div
-            className="text-ink-3 font-code bg-stripe flex h-full aspect-616/353 w-full items-center justify-center text-[11px] tracking-widest uppercase"
-          >
+          <div className="text-ink-3 font-code bg-stripe flex aspect-616/353 h-full w-full items-center justify-center text-[11px] tracking-widest uppercase">
             {locale === "vi" ? "ẢNH BÌA GAME — TỰ ĐỘNG TẢI" : "GAME COVER — AUTO LOADING"}
           </div>
         </div>
@@ -1059,9 +1088,7 @@ function GameSummary({
     return (
       <div className="space-y-4">
         <div className="border-line-soft mt-4 aspect-460/215 overflow-hidden rounded-[12px] border">
-          <div
-            className="text-ink-3 font-code bg-stripe flex h-full w-full items-center justify-center gap-2.5 text-[11px] tracking-widest uppercase"
-          >
+          <div className="text-ink-3 font-code bg-stripe flex h-full w-full items-center justify-center gap-2.5 text-[11px] tracking-widest uppercase">
             <Loader2 size={14} className="animate-[spin_0.7s_linear_infinite]" />
           </div>
         </div>
@@ -1086,9 +1113,7 @@ function GameSummary({
       {g.imageUrl ? (
         <BannerImage key={g.imageUrl} src={g.imageUrl} alt={g.name} />
       ) : (
-        <div
-          className="text-ink-3 font-code bg-stripe flex min-h-35.75 w-full items-center justify-center gap-2.5 text-[11px] tracking-widest uppercase"
-        >
+        <div className="text-ink-3 font-code bg-stripe flex min-h-35.75 w-full items-center justify-center gap-2.5 text-[11px] tracking-widest uppercase">
           {coverLabel}
         </div>
       )}
@@ -1182,9 +1207,7 @@ function GameSummary({
             <span className="text-ink-3 text-[13px] line-through">
               {format(g.initialPriceVnd, g.initialPriceUsd)}
             </span>
-            <span
-              className="font-code text-good bg-good-bg rounded-[6px] px-2 py-0.75 text-[12px] font-bold"
-            >
+            <span className="font-code text-good bg-good-bg rounded-[6px] px-2 py-0.75 text-[12px] font-bold">
               −{dPct}%
             </span>
           </>
@@ -1232,9 +1255,7 @@ function KeySummary({
   return (
     <>
       <div className="mt-4.5 flex items-baseline gap-2.5">
-        <span
-          className="font-code text-[34px] font-bold tracking-[-0.02em] text-hi-text-bright text-shadow-glow"
-        >
+        <span className="font-code text-hi-text-bright text-shadow-glow text-[34px] font-bold tracking-[-0.02em]">
           {format(k.lowestPriceVnd)}
         </span>
         <span className="text-ink-3 text-[12px]">{t("steps.key.lowest")}</span>

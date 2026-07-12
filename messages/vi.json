@@ -121,7 +121,8 @@
         "keysNeeded": "Số chìa khóa cần",
         "netPerKey": "Nạp ví thực nhận mỗi chìa",
         "cashPaid": "Tiền mặt trả cho chìa",
-        "walletAfter": "Số dư ví Steam còn lại"
+        "walletAfter": "Số dư ví Steam còn lại",
+        "unavailable": "Chưa lấy được giá chìa khóa TF2 — bấm làm mới ở trên để so sánh phương án này."
       }
     }
   },
@@ -146,6 +147,7 @@
     "tfNetPerKey": "Nạp ví thực nhận mỗi chìa",
     "tfCashPaid": "Tiền mặt trả cho chìa",
     "tfWalletAfter": "Số dư ví Steam còn lại",
+    "tfUnavailable": "Hiện chưa lấy được giá chìa khóa TF2.",
     "giftMethod": "Dịch vụ gift",
     "tfMethod": "Chìa khóa TF2"
   }

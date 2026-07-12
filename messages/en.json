@@ -121,7 +121,8 @@
         "keysNeeded": "Keys needed",
         "netPerKey": "Net wallet per key",
         "cashPaid": "Cash paid for keys",
-        "walletAfter": "Steam Wallet balance remaining"
+        "walletAfter": "Steam Wallet balance remaining",
+        "unavailable": "TF2 key price unavailable right now — refresh it above to compare this route."
       }
     }
   },
@@ -146,6 +147,7 @@
     "tfNetPerKey": "Net wallet per key",
     "tfCashPaid": "Cash paid for keys",
     "tfWalletAfter": "Steam Wallet balance remaining",
+    "tfUnavailable": "TF2 key price unavailable right now.",
     "giftMethod": "Gifting service",
     "tfMethod": "TF2 keys"
   }

@@ -97,8 +97,10 @@ export function CartCard({
   const fmt = (vnd: number | null | undefined) =>
     showUsd ? formatUsd(vnd ?? null, vndPerUsd) : formatVnd(vnd ?? null);
 
+  // Only the cart total is required. When the TF2 key price is unavailable the
+  // TF2 route is dropped but the gifting route still renders.
   const result =
-    cartTotalVnd > 0 && keyPriceVnd
+    cartTotalVnd > 0
       ? calculate({
           gamePriceVnd: cartTotalVnd,
           keyListPriceVnd: keyPriceVnd,
@@ -113,7 +115,7 @@ export function CartCard({
       {/* Header */}
       <div className="flex items-center justify-between px-7 pt-6 pb-4">
         <div className="font-heading text-ink flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
-          <span className="grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border border-hi-border text-hi-text">
+          <span className="border-hi-border text-hi-text grid h-5.5 w-5.5 shrink-0 place-items-center rounded-[7px] border">
             <ShoppingCart size={11} aria-hidden />
           </span>
           <span>{t("titleWithCount", { count: entries.length })}</span>
@@ -200,8 +202,8 @@ export function CartCard({
                 VS
               </span>
               <div className="bg-line absolute top-[calc(50%+26px)] bottom-3.5 left-1/2 w-px -translate-x-1/2 max-[920px]:hidden" />
-              <div className="bg-line absolute top-1/2 left-3.5 right-[calc(50%+30px)] hidden h-px -translate-y-1/2 max-[920px]:block" />
-              <div className="bg-line absolute top-1/2 left-[calc(50%+30px)] right-3.5 hidden h-px -translate-y-1/2 max-[920px]:block" />
+              <div className="bg-line absolute top-1/2 right-[calc(50%+30px)] left-3.5 hidden h-px -translate-y-1/2 max-[920px]:block" />
+              <div className="bg-line absolute top-1/2 right-3.5 left-[calc(50%+30px)] hidden h-px -translate-y-1/2 max-[920px]:block" />
             </div>
 
             {/* TF2 route */}
@@ -226,24 +228,30 @@ export function CartCard({
                   result.cheapest === "tf" ? "text-good" : "text-ink",
                 )}
               >
-                {fmt(result.tf.effectiveCostVnd)}
+                {result.tf ? fmt(result.tf.effectiveCostVnd) : "—"}
               </div>
-              <div className="mt-2 flex flex-col gap-1">
-                <RouteDetail label={t("tfKeysNeeded")} value={String(result.tf.keysNeeded)} />
-                <RouteDetail label={t("tfNetPerKey")} value={fmt(result.tf.netPerKeyVnd)} />
-                <RouteDetail label={t("tfCashPaid")} value={fmt(result.tf.cashPaidVnd)} />
-                <div className="text-ink border-line-soft mt-0.5 flex items-baseline justify-between gap-3 border-t pt-1.5 text-[12.5px] font-bold">
-                  <span>{t("tfWalletAfter")}</span>
-                  <span className="font-code shrink-0">
-                    {fmt(result.tf.walletAfterPurchaseVnd)}
-                  </span>
+              {result.tf ? (
+                <div className="mt-2 flex flex-col gap-1">
+                  <RouteDetail label={t("tfKeysNeeded")} value={String(result.tf.keysNeeded)} />
+                  <RouteDetail label={t("tfNetPerKey")} value={fmt(result.tf.netPerKeyVnd)} />
+                  <RouteDetail label={t("tfCashPaid")} value={fmt(result.tf.cashPaidVnd)} />
+                  <div className="text-ink border-line-soft mt-0.5 flex items-baseline justify-between gap-3 border-t pt-1.5 text-[12.5px] font-bold">
+                    <span>{t("tfWalletAfter")}</span>
+                    <span className="font-code shrink-0">
+                      {fmt(result.tf.walletAfterPurchaseVnd)}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="text-ink-3 mt-2 text-[12px] leading-normal">
+                  {t("tfUnavailable")}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Savings bar */}
-          {result.gift && result.cheapest !== "tie"
+          {result.gift && result.tf && result.cheapest !== "tie"
             ? (() => {
                 const giftCost = result.gift.totalCostVnd ?? 0;
                 const tfCost = result.tf.effectiveCostVnd;

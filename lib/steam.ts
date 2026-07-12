@@ -457,7 +457,17 @@ type SearchHit = {
 };
 
 export async function fetchTf2KeyPrice(): Promise<KeyPriceResult> {
-  const { data } = await http.get(`${STEAM_COMMUNITY}/market/priceoverview/`, {
+  // NOTE: steamcommunity.com/market/priceoverview rate-limits (429) requests
+  // that carry a desktop-browser fingerprint — specifically a Chrome UA *plus*
+  // an `Accept-Language` header — treating them as scraping. Either header alone
+  // is fine; the combination is not. So we bypass the shared `http` client
+  // (which sets both) and send a request WITHOUT `Accept-Language`.
+  const { data } = await axios.get(`${STEAM_COMMUNITY}/market/priceoverview/`, {
+    timeout: 12_000,
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+    },
     params: {
       appid: TF2_APPID,
       currency: CURRENCY_VND,

@@ -1,8 +1,10 @@
 export type CalcInputs = {
   gamePriceVnd: number;
   // Steam Market list price for one TF2 key. Drives the wallet you net after
-  // the marketplace fee (keyListPrice × (1 − fee)).
-  keyListPriceVnd: number;
+  // the marketplace fee (keyListPrice × (1 − fee)). `null` when the Steam Market
+  // price is unavailable (e.g. the key API failed) — the TF2 route is then
+  // dropped, but the gifting route is still computed.
+  keyListPriceVnd: number | null;
   // Cash price you actually pay per key — typically the rate a Vietnamese
   // trader charges, which is lower than the Steam Market list because the
   // trader doesn't pay the marketplace fee on every transaction.
@@ -29,7 +31,9 @@ export type GiftRoute = {
 };
 
 export type CalcResult = {
-  tf: TfRoute;
+  // `null` when the Steam Market key price is unavailable — the gifting route
+  // can still be shown on its own.
+  tf: TfRoute | null;
   gift: GiftRoute | null;
   cheapest: "tf" | "gift" | "tie" | null;
   // Savings of the cheapest route compared to paying the Steam VN sticker price.
@@ -39,20 +43,25 @@ export type CalcResult = {
 
 export function calculate(inputs: CalcInputs): CalcResult {
   const fee = clamp(inputs.marketplaceFeePercent, 0, 100) / 100;
-  const netPerKey = Math.max(0, inputs.keyListPriceVnd * (1 - fee));
-  const keysNeeded = netPerKey > 0 ? Math.ceil(inputs.gamePriceVnd / netPerKey) : 0;
-  const walletReceived = keysNeeded * netPerKey;
-  // Cash you pay for the keys is the trader rate, not the Steam Market price.
-  const cashPaid = keysNeeded * Math.max(0, inputs.keyBuyPriceVnd);
-  const walletAfter = Math.max(0, walletReceived - inputs.gamePriceVnd);
 
-  const tf: TfRoute = {
-    netPerKeyVnd: round(netPerKey),
-    keysNeeded,
-    cashPaidVnd: round(cashPaid),
-    effectiveCostVnd: round(cashPaid),
-    walletAfterPurchaseVnd: round(walletAfter),
-  };
+  // The TF2 route needs a Steam Market key price. Without it we can't estimate
+  // the net wallet per key, so the route is unavailable (but gifting still works).
+  let tf: TfRoute | null = null;
+  if (inputs.keyListPriceVnd != null && inputs.keyListPriceVnd > 0) {
+    const netPerKey = Math.max(0, inputs.keyListPriceVnd * (1 - fee));
+    const keysNeeded = netPerKey > 0 ? Math.ceil(inputs.gamePriceVnd / netPerKey) : 0;
+    const walletReceived = keysNeeded * netPerKey;
+    // Cash you pay for the keys is the trader rate, not the Steam Market price.
+    const cashPaid = keysNeeded * Math.max(0, inputs.keyBuyPriceVnd);
+    const walletAfter = Math.max(0, walletReceived - inputs.gamePriceVnd);
+    tf = {
+      netPerKeyVnd: round(netPerKey),
+      keysNeeded,
+      cashPaidVnd: round(cashPaid),
+      effectiveCostVnd: round(cashPaid),
+      walletAfterPurchaseVnd: round(walletAfter),
+    };
+  }
 
   const gift: GiftRoute | null =
     inputs.giftingRate && inputs.giftingRate > 0
@@ -62,9 +71,10 @@ export function calculate(inputs: CalcInputs): CalcResult {
         }
       : null;
 
+  // Pick the cheapest among the routes that are actually available.
   let cheapest: CalcResult["cheapest"] = null;
   let cheapestCost: number | null = null;
-  if (gift) {
+  if (tf && gift) {
     if (tf.effectiveCostVnd < gift.totalCostVnd) {
       cheapest = "tf";
       cheapestCost = tf.effectiveCostVnd;
@@ -75,9 +85,12 @@ export function calculate(inputs: CalcInputs): CalcResult {
       cheapest = "tie";
       cheapestCost = gift.totalCostVnd;
     }
-  } else {
+  } else if (tf) {
     cheapest = "tf";
     cheapestCost = tf.effectiveCostVnd;
+  } else if (gift) {
+    cheapest = "gift";
+    cheapestCost = gift.totalCostVnd;
   }
 
   const savingsVsDirect = cheapestCost != null ? round(inputs.gamePriceVnd - cheapestCost) : null;
