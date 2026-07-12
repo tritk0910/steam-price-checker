@@ -36,12 +36,10 @@ export async function generateMetadata({
       kind === "bundle" ? await fetchBundlePrice(id) : await fetchGamePrice(id);
     const description = buildDescription(game);
 
-    // Facebook renders a small thumbnail for images under ~600px wide, and the
-    // Steam header is only 460×215. Use the larger 616×353 capsule for apps.
-    const ogImage =
-      kind === "app"
-        ? `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${id}/capsule_616x353.jpg`
-        : game.imageUrl;
+    // Use the exact same asset the web "Game info" card renders (Steam
+    // header_image) so the shared preview banner matches the site. The 616×353
+    // capsule is a different Steam artwork and caused a mismatch.
+    const ogImage = game.imageUrl;
 
     return {
       title: game.name,
@@ -54,7 +52,7 @@ export async function generateMetadata({
         title: game.name,
         description,
         images: ogImage
-          ? [{ url: ogImage, width: 616, height: 353, alt: game.name }]
+          ? [{ url: ogImage, width: 460, height: 215, alt: game.name }]
           : [],
       },
       twitter: {
